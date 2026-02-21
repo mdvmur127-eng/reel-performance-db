@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reel Performance DB</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <h1>Reel Performance DB</h1>
+        <p class="sub">Upload videos, track metrics, decide what to execute again.</p>
+      </header>
+
+      <section class="panel">
+        <h2>Add Reel</h2>
+        <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
+          <label>
+            Reel name
+            <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
+          </label>
+          <label>
+            Platform
+            <select id="platform" name="platform">
+              <option>Instagram</option>
+              <option>TikTok</option>
+              <option>YouTube Shorts</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label class="full">
+            Video file
+            <input id="video" name="video" type="file" accept="video/*" required />
+          </label>
+          <div class="full form-actions">
+            <button type="submit">Save Reel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>Best Candidates To Execute Again</h2>
+          <button id="refresh-ranking" type="button">Refresh Ranking</button>
+        </div>
+        <div id="ranking" class="ranking"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Reels Database</h2>
+        <div id="list" class="list"></div>
+      </section>
+    </main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

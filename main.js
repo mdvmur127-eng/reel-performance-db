@@ -14,6 +14,9 @@ const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 let loaderEl = null;
+let loaderFailsafeTimer = null;
+const REQUEST_TIMEOUT_MS = 12000;
+const LOADER_MAX_MS = 15000;
 
 let currentUser = null;
 
@@ -69,26 +72,51 @@ function setLoading(isLoading, text = "Processing...") {
   const textEl = overlay.querySelector("#loading-text");
   if (textEl) textEl.textContent = text;
   overlay.classList.toggle("hidden", !isLoading);
+
+  if (loaderFailsafeTimer) {
+    clearTimeout(loaderFailsafeTimer);
+    loaderFailsafeTimer = null;
+  }
+
+  if (isLoading) {
+    loaderFailsafeTimer = setTimeout(() => {
+      overlay.classList.add("hidden");
+      console.warn("Loader auto-hidden by failsafe timeout.");
+    }, LOADER_MAX_MS);
+  }
+}
+
+async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function getUser() {
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out.");
   if (error) throw error;
   return data.user;
 }
 
 async function getAllReelsForUser(userId) {
-  const { data, error } = await supabase
-    .from(REELS_TABLE)
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const query = supabase.from(REELS_TABLE).select("*").eq("user_id", userId).order("created_at", { ascending: false });
+  const { data, error } = await withTimeout(query, REQUEST_TIMEOUT_MS, "Loading reels timed out.");
   if (error) throw error;
   return data || [];
 }
 
 async function createSignedUrl(path) {
-  const { data, error } = await supabase.storage.from(REELS_BUCKET).createSignedUrl(path, 3600);
+  const { data, error } = await withTimeout(
+    supabase.storage.from(REELS_BUCKET).createSignedUrl(path, 3600),
+    REQUEST_TIMEOUT_MS,
+    "Loading video preview timed out.",
+  );
   if (error) return "";
   return data?.signedUrl || "";
 }
@@ -173,7 +201,7 @@ uploadForm.addEventListener("submit", async (event) => {
   if (!title || !(video instanceof File) || video.size === 0) return;
 
   const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const userId = (await supabase.auth.getUser()).data.user?.id;
+  const userId = (await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out.")).data.user?.id;
   if (!userId) {
     window.location.href = "/index.html";
     return;
@@ -183,23 +211,31 @@ uploadForm.addEventListener("submit", async (event) => {
 
   setLoading(true, "Uploading reel...");
   try {
-    const { error: uploadError } = await supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
-      cacheControl: "3600",
-      upsert: false,
-      contentType: video.type || "video/mp4",
-    });
+    const { error: uploadError } = await withTimeout(
+      supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: video.type || "video/mp4",
+      }),
+      REQUEST_TIMEOUT_MS,
+      "Video upload timed out.",
+    );
     if (uploadError) throw uploadError;
 
-    const { error: insertError } = await supabase.from(REELS_TABLE).insert({
-      user_id: userId,
-      title,
-      platform,
-      storage_path: storagePath,
-      views: 0,
-      likes: 0,
-      comments: 0,
-      saves: 0,
-    });
+    const { error: insertError } = await withTimeout(
+      supabase.from(REELS_TABLE).insert({
+        user_id: userId,
+        title,
+        platform,
+        storage_path: storagePath,
+        views: 0,
+        likes: 0,
+        comments: 0,
+        saves: 0,
+      }),
+      REQUEST_TIMEOUT_MS,
+      "Saving reel record timed out.",
+    );
     if (insertError) throw insertError;
 
     uploadForm.reset();
@@ -248,11 +284,11 @@ listEl.addEventListener("click", async (event) => {
 
     try {
       setLoading(true, "Saving metrics...");
-      const { error } = await supabase
-        .from(REELS_TABLE)
-        .update(payload)
-        .eq("id", id)
-        .eq("user_id", currentUser.id);
+      const { error } = await withTimeout(
+        supabase.from(REELS_TABLE).update(payload).eq("id", id).eq("user_id", currentUser.id),
+        REQUEST_TIMEOUT_MS,
+        "Saving metrics timed out.",
+      );
       if (error) throw error;
       await render();
     } catch (error) {
@@ -267,13 +303,17 @@ listEl.addEventListener("click", async (event) => {
     try {
       setLoading(true, "Deleting reel...");
       if (storagePath) {
-        await supabase.storage.from(REELS_BUCKET).remove([storagePath]);
+        await withTimeout(
+          supabase.storage.from(REELS_BUCKET).remove([storagePath]),
+          REQUEST_TIMEOUT_MS,
+          "Deleting video timed out.",
+        );
       }
-      const { error } = await supabase
-        .from(REELS_TABLE)
-        .delete()
-        .eq("id", id)
-        .eq("user_id", currentUser.id);
+      const { error } = await withTimeout(
+        supabase.from(REELS_TABLE).delete().eq("id", id).eq("user_id", currentUser.id),
+        REQUEST_TIMEOUT_MS,
+        "Deleting reel timed out.",
+      );
       if (error) throw error;
       await render();
     } catch (error) {
@@ -288,7 +328,7 @@ listEl.addEventListener("click", async (event) => {
 logoutBtn.addEventListener("click", async () => {
   setLoading(true, "Logging out...");
   try {
-    await supabase.auth.signOut();
+    await withTimeout(supabase.auth.signOut(), REQUEST_TIMEOUT_MS, "Logout timed out.");
     window.location.href = "/index.html";
   } finally {
     setLoading(false);

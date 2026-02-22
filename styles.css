@@ -217,6 +217,34 @@ h2 {
   background: var(--white);
 }
 
+.recommendation-card {
+  border: 1px solid var(--line);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.recommendation-title {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.recommendation-points {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendation-chip {
+  display: inline-block;
+  border: 1px solid var(--line-strong);
+  background: var(--white);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .grid {
   display: grid;
   gap: 12px;

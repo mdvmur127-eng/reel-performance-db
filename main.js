@@ -19,6 +19,9 @@ const viewInsights = document.getElementById("view-insights");
 const insightsMetricEl = document.getElementById("insight-metric");
 const insightsChartEl = document.getElementById("insights-chart");
 const insightsEmptyEl = document.getElementById("insights-empty");
+const recommendationTitleEl = document.getElementById("recommendation-title");
+const recommendationBodyEl = document.getElementById("recommendation-body");
+const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
@@ -170,6 +173,7 @@ async function render() {
   );
 
   listEl.innerHTML = cards.join("");
+  renderRecommendation(withScores);
   renderInsights(withScores);
 }
 
@@ -244,6 +248,38 @@ function renderInsights(reels) {
 
     ctx.fillText(String(value), x, y - 8);
   });
+}
+
+function renderRecommendation(reels) {
+  if (!recommendationTitleEl || !recommendationBodyEl || !recommendationPointsEl) return;
+  if (!reels.length) {
+    recommendationTitleEl.textContent = "Add reels to get a recommendation.";
+    recommendationBodyEl.textContent = "";
+    recommendationPointsEl.innerHTML = "";
+    return;
+  }
+
+  const best = [...reels].sort((a, b) => b.rankScore - a.rankScore)[0];
+  const views = Number(best.views) || 0;
+  const likes = Number(best.likes) || 0;
+  const comments = Number(best.comments) || 0;
+  const saves = Number(best.saves) || 0;
+  const engagementTotal = likes + comments + saves;
+  const engagementRate = views > 0 ? (engagementTotal / views) * 100 : 0;
+
+  const strongestMetric =
+    saves >= comments && saves >= likes ? "saves" : comments >= likes ? "comments" : "likes";
+
+  recommendationTitleEl.textContent = `Replicate the style of "${best.title}"`;
+  recommendationBodyEl.textContent = `Best performer is on ${best.platform} (score ${best.rankScore}). Create a similar reel format and hook, then test 2-3 variants on the same platform.`;
+
+  const points = [
+    `Platform to prioritize: ${best.platform}`,
+    `Target baseline: ${views} views and ~${engagementRate.toFixed(1)}% engagement`,
+    `Most responsive signal: ${strongestMetric} (likes ${likes}, comments ${comments}, saves ${saves})`,
+  ];
+
+  recommendationPointsEl.innerHTML = points.map((point) => `<span class="recommendation-chip">${escapeHtml(point)}</span>`).join("");
 }
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -327,6 +363,7 @@ tabButtons.forEach((button) => {
 
 insightsMetricEl?.addEventListener("change", () => {
   const withScores = cachedReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
+  renderRecommendation(withScores);
   renderInsights(withScores);
 });
 

@@ -23,6 +23,8 @@ const recommendationTitleEl = document.getElementById("recommendation-title");
 const recommendationBodyEl = document.getElementById("recommendation-body");
 const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
+const MIN_UPLOAD_TIMEOUT_MS = 120000;
+const MAX_UPLOAD_TIMEOUT_MS = 300000;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
@@ -71,6 +73,12 @@ function setSubmitLoading(isLoading, label = "Uploading...") {
   submitBtn.disabled = isLoading;
   submitBtn.classList.toggle("is-loading", isLoading);
   submitBtn.textContent = isLoading ? label : submitBtnDefaultLabel;
+}
+
+function getUploadTimeoutMs(file) {
+  const sizeMb = Math.ceil((file?.size || 0) / (1024 * 1024));
+  const computed = 90000 + sizeMb * 2500;
+  return Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.min(MAX_UPLOAD_TIMEOUT_MS, computed));
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
@@ -307,6 +315,7 @@ uploadForm.addEventListener("submit", async (event) => {
 
   const storagePath = `${userId}/${Date.now()}_${safeName}`;
   let saved = false;
+  const uploadTimeoutMs = getUploadTimeoutMs(video);
 
   setSubmitLoading(true, "Uploading...");
   try {
@@ -316,7 +325,7 @@ uploadForm.addEventListener("submit", async (event) => {
         upsert: false,
         contentType: video.type || "video/mp4",
       }),
-      REQUEST_TIMEOUT_MS,
+      uploadTimeoutMs,
       "Video upload timed out.",
     );
     if (uploadError) throw uploadError;
@@ -340,6 +349,7 @@ uploadForm.addEventListener("submit", async (event) => {
     saved = true;
     uploadForm.reset();
   } catch (error) {
+    setSubmitLoading(false);
     console.error("Create reel failed:", error);
     alert(`Failed to save reel: ${error.message || "unknown error"}`);
   } finally {

@@ -180,6 +180,43 @@ h2 {
   flex-wrap: wrap;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-btn {
+  background: var(--white);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: var(--black);
+}
+
+.view {
+  display: none;
+  gap: 18px;
+}
+
+.view.active {
+  display: grid;
+}
+
+.insight-control {
+  min-width: 180px;
+}
+
+.insights-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white);
+}
+
 .grid {
   display: grid;
   gap: 12px;

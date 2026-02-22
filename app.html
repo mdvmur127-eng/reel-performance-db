@@ -19,44 +19,71 @@
         </div>
       </header>
 
-      <section class="panel">
-        <h2>Add Reel</h2>
-        <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
-          <label>
-            Reel name
-            <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
-          </label>
-          <label>
-            Platform
-            <select id="platform" name="platform">
-              <option>Instagram</option>
-              <option>TikTok</option>
-              <option>YouTube Shorts</option>
-              <option>Other</option>
-            </select>
-          </label>
-          <label class="full">
-            Video file
-            <input id="video" name="video" type="file" accept="video/*" required />
-          </label>
-          <div class="full form-actions">
-            <button type="submit">Save Reel</button>
+      <nav class="tabs" aria-label="Sections">
+        <button id="tab-overview" class="tab-btn active" type="button" data-tab="overview">Overview</button>
+        <button id="tab-insights" class="tab-btn" type="button" data-tab="insights">Insights</button>
+      </nav>
+
+      <div id="view-overview" class="view active">
+        <section class="panel">
+          <h2>Add Reel</h2>
+          <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
+            <label>
+              Reel name
+              <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
+            </label>
+            <label>
+              Platform
+              <select id="platform" name="platform">
+                <option>Instagram</option>
+                <option>TikTok</option>
+                <option>YouTube Shorts</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="full">
+              Video file
+              <input id="video" name="video" type="file" accept="video/*" required />
+            </label>
+            <div class="full form-actions">
+              <button type="submit">Save Reel</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Best Candidates To Execute Again</h2>
+            <button id="refresh-ranking" type="button" class="secondary">Refresh Ranking</button>
           </div>
-        </form>
-      </section>
+          <div id="ranking" class="ranking"></div>
+        </section>
 
-      <section class="panel">
-        <div class="section-head">
-          <h2>Best Candidates To Execute Again</h2>
-          <button id="refresh-ranking" type="button" class="secondary">Refresh Ranking</button>
-        </div>
-        <div id="ranking" class="ranking"></div>
-      </section>
+        <section class="panel">
+          <h2>Reels Database</h2>
+          <div id="list" class="list"></div>
+        </section>
+      </div>
 
-      <section class="panel">
-        <h2>Reels Database</h2>
-        <div id="list" class="list"></div>
-      </section>
+      <div id="view-insights" class="view">
+        <section class="panel">
+          <div class="section-head">
+            <h2>Insights</h2>
+            <label class="insight-control">
+              Metric
+              <select id="insight-metric">
+                <option value="views">Views</option>
+                <option value="likes">Likes</option>
+                <option value="comments">Comments</option>
+                <option value="saves">Saves</option>
+                <option value="score">Score</option>
+              </select>
+            </label>
+          </div>
+          <canvas id="insights-chart" class="insights-chart" width="1100" height="420" aria-label="Reel metrics chart"></canvas>
+          <p id="insights-empty" class="meta"></p>
+        </section>
+      </div>
     </main>
     <script type="module" src="/main.js?v=20260222a"></script>
   </body>

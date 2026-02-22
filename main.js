@@ -13,11 +13,18 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
+const tabButtons = document.querySelectorAll(".tab-btn");
+const viewOverview = document.getElementById("view-overview");
+const viewInsights = document.getElementById("view-insights");
+const insightsMetricEl = document.getElementById("insight-metric");
+const insightsChartEl = document.getElementById("insights-chart");
+const insightsEmptyEl = document.getElementById("insights-empty");
 const REQUEST_TIMEOUT_MS = 12000;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
 let currentUser = null;
+let cachedReels = [];
 
 function score(reel) {
   const views = Number(reel.views) || 0;
@@ -110,10 +117,12 @@ async function render() {
     rankingEl.innerHTML = '<div class="meta">Ranking unavailable.</div>';
     return;
   }
+  cachedReels = reels;
 
   if (!reels.length) {
     listEl.innerHTML = '<div class="meta">No reels yet. Add your first one above.</div>';
     rankingEl.innerHTML = '<div class="meta">Add reels with metrics to see ranking.</div>';
+    renderInsights([]);
     return;
   }
 
@@ -161,6 +170,80 @@ async function render() {
   );
 
   listEl.innerHTML = cards.join("");
+  renderInsights(withScores);
+}
+
+function activateTab(tabName) {
+  tabButtons.forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
+  viewOverview.classList.toggle("active", tabName === "overview");
+  viewInsights.classList.toggle("active", tabName === "insights");
+}
+
+function renderInsights(reels) {
+  if (!insightsChartEl || !insightsMetricEl || !insightsEmptyEl) return;
+  const ctx = insightsChartEl.getContext("2d");
+  if (!ctx) return;
+
+  const metric = insightsMetricEl.value || "views";
+  const items = [...reels].slice(0, 8);
+  const values = items.map((reel) => (metric === "score" ? reel.rankScore : Number(reel[metric]) || 0));
+  const max = Math.max(...values, 0);
+
+  ctx.clearRect(0, 0, insightsChartEl.width, insightsChartEl.height);
+
+  if (!items.length || max <= 0) {
+    insightsEmptyEl.textContent = items.length ? "Selected metric is zero for all reels." : "Add reels to see insights.";
+    return;
+  }
+
+  insightsEmptyEl.textContent = "";
+  const chartPadding = { top: 24, right: 20, bottom: 90, left: 60 };
+  const plotWidth = insightsChartEl.width - chartPadding.left - chartPadding.right;
+  const plotHeight = insightsChartEl.height - chartPadding.top - chartPadding.bottom;
+  const barGap = 18;
+  const barWidth = Math.max(24, (plotWidth - barGap * (items.length - 1)) / items.length);
+
+  ctx.strokeStyle = "rgba(30, 42, 56, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(chartPadding.left, chartPadding.top);
+  ctx.lineTo(chartPadding.left, chartPadding.top + plotHeight);
+  ctx.lineTo(chartPadding.left + plotWidth, chartPadding.top + plotHeight);
+  ctx.stroke();
+
+  ctx.fillStyle = "#1e2a38";
+  ctx.font = "12px Poppins";
+  for (let i = 0; i <= 4; i += 1) {
+    const y = chartPadding.top + (plotHeight * i) / 4;
+    const value = Math.round(max - (max * i) / 4);
+    ctx.fillText(value.toString(), 12, y + 4);
+    ctx.strokeStyle = "rgba(30, 42, 56, 0.12)";
+    ctx.beginPath();
+    ctx.moveTo(chartPadding.left, y);
+    ctx.lineTo(chartPadding.left + plotWidth, y);
+    ctx.stroke();
+  }
+
+  items.forEach((reel, index) => {
+    const value = values[index];
+    const barHeight = (value / max) * plotHeight;
+    const x = chartPadding.left + index * (barWidth + barGap);
+    const y = chartPadding.top + plotHeight - barHeight;
+
+    ctx.fillStyle = "#f5a622";
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    ctx.fillStyle = "#1e2a38";
+    ctx.font = "11px Poppins";
+    const label = reel.title.length > 12 ? `${reel.title.slice(0, 12)}...` : reel.title;
+    ctx.save();
+    ctx.translate(x + barWidth / 2, chartPadding.top + plotHeight + 12);
+    ctx.rotate(-Math.PI / 5);
+    ctx.fillText(label, -34, 0);
+    ctx.restore();
+
+    ctx.fillText(String(value), x, y - 8);
+  });
 }
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -236,6 +319,15 @@ uploadForm.addEventListener("submit", async (event) => {
 
 refreshRankingBtn.addEventListener("click", async () => {
   await render();
+});
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => activateTab(button.dataset.tab || "overview"));
+});
+
+insightsMetricEl?.addEventListener("change", () => {
+  const withScores = cachedReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
+  renderInsights(withScores);
 });
 
 listEl.addEventListener("click", async (event) => {

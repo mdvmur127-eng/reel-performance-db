@@ -13,8 +13,9 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
-let loaderEl = null;
 const REQUEST_TIMEOUT_MS = 12000;
+const submitBtn = uploadForm?.querySelector('button[type="submit"]');
+const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
 let currentUser = null;
 
@@ -51,29 +52,15 @@ function metricInput(name, value) {
   `;
 }
 
-function ensureLoader() {
-  if (loaderEl) return loaderEl;
-  loaderEl = document.createElement("div");
-  loaderEl.className = "loading-overlay hidden";
-  loaderEl.innerHTML = `
-    <div class="loading-box">
-      <div class="spinner" aria-hidden="true"></div>
-      <div id="loading-text" class="loading-text">Processing...</div>
-    </div>
-  `;
-  document.body.appendChild(loaderEl);
-  return loaderEl;
+function clearLegacyOverlays() {
+  document.querySelectorAll(".loading-overlay").forEach((node) => node.remove());
 }
 
-function setLoading(isLoading, text = "Processing...") {
-  const overlay = ensureLoader();
-  const textEl = overlay.querySelector("#loading-text");
-  if (textEl) textEl.textContent = text;
-  if (!isLoading) {
-    document.querySelectorAll(".loading-overlay").forEach((node) => node.classList.add("hidden"));
-    return;
-  }
-  overlay.classList.remove("hidden");
+function setSubmitLoading(isLoading, label = "Uploading...") {
+  if (!submitBtn) return;
+  submitBtn.disabled = isLoading;
+  submitBtn.classList.toggle("is-loading", isLoading);
+  submitBtn.textContent = isLoading ? label : submitBtnDefaultLabel;
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
@@ -178,6 +165,8 @@ async function render() {
 
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  clearLegacyOverlays();
+
   if (!currentUser) {
     window.location.href = "/index.html";
     return;
@@ -198,12 +187,9 @@ uploadForm.addEventListener("submit", async (event) => {
   }
 
   const storagePath = `${userId}/${Date.now()}_${safeName}`;
-  const submitBtn = uploadForm.querySelector('button[type="submit"]');
-  const forceHideTimer = setTimeout(() => setLoading(false), REQUEST_TIMEOUT_MS + 3000);
   let saved = false;
 
-  setLoading(true, "Uploading reel...");
-  if (submitBtn) submitBtn.disabled = true;
+  setSubmitLoading(true, "Uploading...");
   try {
     const { error: uploadError } = await withTimeout(
       supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
@@ -238,9 +224,8 @@ uploadForm.addEventListener("submit", async (event) => {
     console.error("Create reel failed:", error);
     alert(`Failed to save reel: ${error.message || "unknown error"}`);
   } finally {
-    clearTimeout(forceHideTimer);
-    if (submitBtn) submitBtn.disabled = false;
-    setLoading(false);
+    setSubmitLoading(false);
+    clearLegacyOverlays();
   }
 
   if (saved) {
@@ -321,6 +306,7 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 async function init() {
+  clearLegacyOverlays();
   const user = await getUser().catch(() => null);
   if (!user) {
     window.location.href = "/index.html";

@@ -69,7 +69,11 @@ function setLoading(isLoading, text = "Processing...") {
   const overlay = ensureLoader();
   const textEl = overlay.querySelector("#loading-text");
   if (textEl) textEl.textContent = text;
-  overlay.classList.toggle("hidden", !isLoading);
+  if (!isLoading) {
+    document.querySelectorAll(".loading-overlay").forEach((node) => node.classList.add("hidden"));
+    return;
+  }
+  overlay.classList.remove("hidden");
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
@@ -194,8 +198,12 @@ uploadForm.addEventListener("submit", async (event) => {
   }
 
   const storagePath = `${userId}/${Date.now()}_${safeName}`;
+  const submitBtn = uploadForm.querySelector('button[type="submit"]');
+  const forceHideTimer = setTimeout(() => setLoading(false), REQUEST_TIMEOUT_MS + 3000);
+  let saved = false;
 
   setLoading(true, "Uploading reel...");
+  if (submitBtn) submitBtn.disabled = true;
   try {
     const { error: uploadError } = await withTimeout(
       supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
@@ -224,13 +232,20 @@ uploadForm.addEventListener("submit", async (event) => {
     );
     if (insertError) throw insertError;
 
+    saved = true;
     uploadForm.reset();
-    await render();
   } catch (error) {
     console.error("Create reel failed:", error);
     alert(`Failed to save reel: ${error.message || "unknown error"}`);
   } finally {
+    clearTimeout(forceHideTimer);
+    if (submitBtn) submitBtn.disabled = false;
     setLoading(false);
+  }
+
+  if (saved) {
+    // Re-render after spinner is already hidden to prevent perceived infinite loading.
+    await render();
   }
 });
 

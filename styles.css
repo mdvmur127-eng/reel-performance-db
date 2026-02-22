@@ -40,6 +40,11 @@ body {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .top h1 {
@@ -51,6 +56,40 @@ body {
 .sub {
   margin: 8px 0 0;
   color: var(--muted);
+}
+
+.hidden {
+  display: none;
+}
+
+#app-screen {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.auth-form {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-form h2 {
+  margin-bottom: 6px;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .panel {
@@ -124,6 +163,16 @@ button {
 
 button:hover {
   filter: brightness(1.04);
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+button.secondary:hover {
+  background: #f9fafb;
 }
 
 .form-actions {
@@ -213,12 +262,20 @@ video {
   background: #f9fafb;
 }
 
+#auth-message.error {
+  color: var(--danger);
+}
+
 @media (max-width: 780px) {
   .app {
     padding: 16px;
   }
 
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,12 +1,26 @@
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
 const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REELS_BUCKET = "reels";
 
-const form = document.getElementById("upload-form");
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+const authScreen = document.getElementById("auth-screen");
+const appScreen = document.getElementById("app-screen");
+const authMessageEl = document.getElementById("auth-message");
+const signupForm = document.getElementById("signup-form");
+const loginForm = document.getElementById("login-form");
+const logoutBtn = document.getElementById("logout-btn");
+const userEmailEl = document.getElementById("user-email");
+
+const uploadForm = document.getElementById("upload-form");
 const listEl = document.getElementById("list");
 const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
+
+let currentUser = null;
 
 function score(reel) {
   const views = Number(reel.views) || 0;
@@ -17,6 +31,15 @@ function score(reel) {
   const engagementRate = (likes + comments * 2 + saves * 3) / denominator;
   const boostedReach = Math.log10(views + 10);
   return Number((engagementRate * 70 + boostedReach * 30).toFixed(2));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function formatDate(iso) {
@@ -32,122 +55,56 @@ function metricInput(name, value) {
   `;
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function setAuthMessage(message, isError = false) {
+  authMessageEl.textContent = message || "";
+  authMessageEl.classList.toggle("error", Boolean(message && isError));
 }
 
-function apiHeaders(contentType = "application/json") {
-  return {
-    apikey: SUPABASE_PUBLISHABLE_KEY,
-    Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-    "Content-Type": contentType,
-  };
+function setLoggedOutUi() {
+  currentUser = null;
+  authScreen.classList.remove("hidden");
+  appScreen.classList.add("hidden");
+  userEmailEl.textContent = "";
 }
 
-async function fetchJson(url, options = {}) {
-  const res = await fetch(url, options);
-  const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    const message = body?.message || body?.error_description || body?.error || `HTTP ${res.status}`;
-    throw new Error(message);
-  }
-  return body;
+function setLoggedInUi(user) {
+  currentUser = user;
+  authScreen.classList.add("hidden");
+  appScreen.classList.remove("hidden");
+  userEmailEl.textContent = user.email || "";
 }
 
-async function getAllReels() {
-  const url = `${SUPABASE_URL}/rest/v1/${REELS_TABLE}?select=*&order=created_at.desc`;
-  return fetchJson(url, { headers: apiHeaders() });
+async function getUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data.user;
 }
 
-async function uploadVideo(path, file) {
-  const url = `${SUPABASE_URL}/storage/v1/object/${REELS_BUCKET}/${encodeURIComponent(path)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-      "x-upsert": "false",
-      "Content-Type": file.type || "video/mp4",
-    },
-    body: file,
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    let message = `HTTP ${res.status}`;
-    try {
-      const body = text ? JSON.parse(text) : null;
-      message = body?.message || body?.error || message;
-    } catch {
-      message = text || message;
-    }
-    throw new Error(`Storage upload failed: ${message}`);
-  }
+async function getAllReelsForUser(userId) {
+  const { data, error } = await supabase
+    .from(REELS_TABLE)
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 async function createSignedUrl(path) {
-  const url = `${SUPABASE_URL}/storage/v1/object/sign/${REELS_BUCKET}/${encodeURIComponent(path)}`;
-  const body = await fetchJson(url, {
-    method: "POST",
-    headers: apiHeaders(),
-    body: JSON.stringify({ expiresIn: 3600 }),
-  });
-  if (!body?.signedURL) return "";
-  return `${SUPABASE_URL}/storage/v1${body.signedURL}`;
-}
-
-async function insertReel(row) {
-  const url = `${SUPABASE_URL}/rest/v1/${REELS_TABLE}`;
-  await fetchJson(url, {
-    method: "POST",
-    headers: { ...apiHeaders(), Prefer: "return=representation" },
-    body: JSON.stringify(row),
-  });
-}
-
-async function updateReel(id, payload) {
-  const url = `${SUPABASE_URL}/rest/v1/${REELS_TABLE}?id=eq.${encodeURIComponent(id)}`;
-  await fetchJson(url, {
-    method: "PATCH",
-    headers: { ...apiHeaders(), Prefer: "return=minimal" },
-    body: JSON.stringify(payload),
-  });
-}
-
-async function deleteReelRow(id) {
-  const url = `${SUPABASE_URL}/rest/v1/${REELS_TABLE}?id=eq.${encodeURIComponent(id)}`;
-  await fetchJson(url, {
-    method: "DELETE",
-    headers: { ...apiHeaders(), Prefer: "return=minimal" },
-  });
-}
-
-async function deleteStoragePath(path) {
-  const url = `${SUPABASE_URL}/storage/v1/object/${REELS_BUCKET}/${encodeURIComponent(path)}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-    },
-  });
-  if (!res.ok) {
-    console.warn("Storage delete failed", await res.text());
-  }
+  const { data, error } = await supabase.storage.from(REELS_BUCKET).createSignedUrl(path, 3600);
+  if (error) return "";
+  return data?.signedUrl || "";
 }
 
 async function render() {
+  if (!currentUser) return;
+
   let reels = [];
   try {
-    reels = await getAllReels();
+    reels = await getAllReelsForUser(currentUser.id);
   } catch (error) {
     console.error(error);
-    listEl.innerHTML = '<div class="meta">Failed to load Supabase data. Check SQL setup and browser network access.</div>';
+    listEl.innerHTML = '<div class="meta">Failed to load your reels.</div>';
     rankingEl.innerHTML = '<div class="meta">Ranking unavailable.</div>';
     return;
   }
@@ -204,10 +161,58 @@ async function render() {
   listEl.innerHTML = cards.join("");
 }
 
-form.addEventListener("submit", async (event) => {
+signupForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const fd = new FormData(signupForm);
+  const email = String(fd.get("email") || "").trim();
+  const password = String(fd.get("password") || "");
+  if (!email || !password) return;
 
-  const fd = new FormData(form);
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) {
+    setAuthMessage(`Sign up failed: ${error.message}`, true);
+    return;
+  }
+  setAuthMessage("Sign-up success. Check your email for confirmation if required.");
+});
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const fd = new FormData(loginForm);
+  const email = String(fd.get("email") || "").trim();
+  const password = String(fd.get("password") || "");
+  if (!email || !password) return;
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    setAuthMessage(`Login failed: ${error.message}`, true);
+    return;
+  }
+
+  const user = await getUser();
+  if (!user) {
+    setAuthMessage("Login succeeded but no user session found.", true);
+    return;
+  }
+  setAuthMessage("");
+  setLoggedInUi(user);
+  await render();
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  setLoggedOutUi();
+  setAuthMessage("Logged out.");
+});
+
+uploadForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentUser) {
+    setLoggedOutUi();
+    return;
+  }
+
+  const fd = new FormData(uploadForm);
   const title = String(fd.get("title") || "").trim();
   const platform = String(fd.get("platform") || "Instagram");
   const video = fd.get("video");
@@ -215,20 +220,38 @@ form.addEventListener("submit", async (event) => {
   if (!title || !(video instanceof File) || video.size === 0) return;
 
   const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `${Date.now()}_${safeName}`;
+
+  // Requirement: store current authenticated user id when creating a reel.
+  const userId = (await supabase.auth.getUser()).data.user?.id;
+  if (!userId) {
+    alert("No authenticated user.");
+    setLoggedOutUi();
+    return;
+  }
+
+  const storagePath = `${userId}/${Date.now()}_${safeName}`;
 
   try {
-    await uploadVideo(path, video);
-    await insertReel({
+    const { error: uploadError } = await supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: video.type || "video/mp4",
+    });
+    if (uploadError) throw uploadError;
+
+    const { error: insertError } = await supabase.from(REELS_TABLE).insert({
+      user_id: userId,
       title,
       platform,
-      storage_path: path,
+      storage_path: storagePath,
       views: 0,
       likes: 0,
       comments: 0,
       saves: 0,
     });
-    form.reset();
+    if (insertError) throw insertError;
+
+    uploadForm.reset();
     await render();
   } catch (error) {
     console.error("Create reel failed:", error);
@@ -240,7 +263,7 @@ refreshRankingBtn.addEventListener("click", () => render());
 
 listEl.addEventListener("click", async (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
+  if (!(target instanceof HTMLElement) || !currentUser) return;
   const action = target.dataset.action;
   if (!action) return;
 
@@ -259,13 +282,20 @@ listEl.addEventListener("click", async (event) => {
     if (!(formEl instanceof HTMLFormElement)) return;
     const fd = new FormData(formEl);
 
+    const payload = {
+      views: Number(fd.get("views") || 0),
+      likes: Number(fd.get("likes") || 0),
+      comments: Number(fd.get("comments") || 0),
+      saves: Number(fd.get("saves") || 0),
+    };
+
     try {
-      await updateReel(id, {
-        views: Number(fd.get("views") || 0),
-        likes: Number(fd.get("likes") || 0),
-        comments: Number(fd.get("comments") || 0),
-        saves: Number(fd.get("saves") || 0),
-      });
+      const { error } = await supabase
+        .from(REELS_TABLE)
+        .update(payload)
+        .eq("id", id)
+        .eq("user_id", currentUser.id);
+      if (error) throw error;
       await render();
     } catch (error) {
       console.error(error);
@@ -275,8 +305,15 @@ listEl.addEventListener("click", async (event) => {
 
   if (action === "delete") {
     try {
-      if (storagePath) await deleteStoragePath(storagePath);
-      await deleteReelRow(id);
+      if (storagePath) {
+        await supabase.storage.from(REELS_BUCKET).remove([storagePath]);
+      }
+      const { error } = await supabase
+        .from(REELS_TABLE)
+        .delete()
+        .eq("id", id)
+        .eq("user_id", currentUser.id);
+      if (error) throw error;
       await render();
     } catch (error) {
       console.error(error);
@@ -285,4 +322,23 @@ listEl.addEventListener("click", async (event) => {
   }
 });
 
-render();
+supabase.auth.onAuthStateChange(async (_event, session) => {
+  if (!session?.user) {
+    setLoggedOutUi();
+    return;
+  }
+  setLoggedInUi(session.user);
+  await render();
+});
+
+async function init() {
+  const user = await getUser().catch(() => null);
+  if (!user) {
+    setLoggedOutUi();
+    return;
+  }
+  setLoggedInUi(user);
+  await render();
+}
+
+init();

@@ -8,49 +8,89 @@
   </head>
   <body>
     <main class="app">
-      <header class="top">
+      <section id="auth-screen" class="panel">
         <h1>Reel Performance DB</h1>
-        <p class="sub">Upload videos, track metrics, decide what to execute again.</p>
-      </header>
-
-      <section class="panel">
-        <h2>Add Reel</h2>
-        <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
-          <label>
-            Reel name
-            <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
-          </label>
-          <label>
-            Platform
-            <select id="platform" name="platform">
-              <option>Instagram</option>
-              <option>TikTok</option>
-              <option>YouTube Shorts</option>
-              <option>Other</option>
-            </select>
-          </label>
-          <label class="full">
-            Video file
-            <input id="video" name="video" type="file" accept="video/*" required />
-          </label>
-          <div class="full form-actions">
-            <button type="submit">Save Reel</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <h2>Best Candidates To Execute Again</h2>
-          <button id="refresh-ranking" type="button">Refresh Ranking</button>
+        <p class="sub">Sign up or log in to manage your own reels only.</p>
+        <div class="auth-grid">
+          <form id="signup-form" class="auth-form" method="post" action="#">
+            <h2>Create account</h2>
+            <label>
+              Email
+              <input id="signup-email" name="email" type="email" required autocomplete="email" />
+            </label>
+            <label>
+              Password
+              <input id="signup-password" name="password" type="password" required minlength="6" autocomplete="new-password" />
+            </label>
+            <button type="submit">Sign Up</button>
+          </form>
+          <form id="login-form" class="auth-form" method="post" action="#">
+            <h2>Log in</h2>
+            <label>
+              Email
+              <input id="login-email" name="email" type="email" required autocomplete="email" />
+            </label>
+            <label>
+              Password
+              <input id="login-password" name="password" type="password" required autocomplete="current-password" />
+            </label>
+            <button type="submit">Log In</button>
+          </form>
         </div>
-        <div id="ranking" class="ranking"></div>
+        <p id="auth-message" class="meta"></p>
       </section>
 
-      <section class="panel">
-        <h2>Reels Database</h2>
-        <div id="list" class="list"></div>
-      </section>
+      <div id="app-screen" class="hidden">
+        <header class="top">
+          <div>
+            <h1>Reel Performance DB</h1>
+            <p class="sub">Upload videos, track metrics, decide what to execute again.</p>
+          </div>
+          <div class="user-actions">
+            <span id="user-email" class="meta"></span>
+            <button id="logout-btn" type="button" class="secondary">Log Out</button>
+          </div>
+        </header>
+
+        <section class="panel">
+          <h2>Add Reel</h2>
+          <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
+            <label>
+              Reel name
+              <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
+            </label>
+            <label>
+              Platform
+              <select id="platform" name="platform">
+                <option>Instagram</option>
+                <option>TikTok</option>
+                <option>YouTube Shorts</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="full">
+              Video file
+              <input id="video" name="video" type="file" accept="video/*" required />
+            </label>
+            <div class="full form-actions">
+              <button type="submit">Save Reel</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Best Candidates To Execute Again</h2>
+            <button id="refresh-ranking" type="button" class="secondary">Refresh Ranking</button>
+          </div>
+          <div id="ranking" class="ranking"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Reels Database</h2>
+          <div id="list" class="list"></div>
+        </section>
+      </div>
     </main>
     <script type="module" src="/main.js"></script>
   </body>

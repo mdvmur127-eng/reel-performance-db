@@ -23,9 +23,6 @@ const recommendationTitleEl = document.getElementById("recommendation-title");
 const recommendationBodyEl = document.getElementById("recommendation-body");
 const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
-const MIN_UPLOAD_TIMEOUT_MS = 120000;
-const MAX_UPLOAD_TIMEOUT_MS = 300000;
-const MAX_UPLOAD_MB = 45;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
@@ -76,12 +73,6 @@ function setSubmitLoading(isLoading, label = "Uploading...") {
   submitBtn.textContent = isLoading ? label : submitBtnDefaultLabel;
 }
 
-function getUploadTimeoutMs(file) {
-  const sizeMb = Math.ceil((file?.size || 0) / (1024 * 1024));
-  const computed = 90000 + sizeMb * 2500;
-  return Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.min(MAX_UPLOAD_TIMEOUT_MS, computed));
-}
-
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -115,6 +106,17 @@ async function createSignedUrl(path) {
   );
   if (error) return "";
   return data?.signedUrl || "";
+}
+
+async function getPlayableVideoUrl(reel) {
+  const candidate = reel.video_url || reel.storage_path || "";
+  if (/^https?:\/\//i.test(candidate)) {
+    return candidate;
+  }
+  if (candidate) {
+    return createSignedUrl(candidate).catch(() => "");
+  }
+  return "";
 }
 
 async function render() {
@@ -157,7 +159,7 @@ async function render() {
 
   const cards = await Promise.all(
     withScores.map(async (reel) => {
-      const videoUrl = reel.storage_path ? await createSignedUrl(reel.storage_path).catch(() => "") : "";
+      const videoUrl = await getPlayableVideoUrl(reel);
       return `
       <article class="card" data-id="${reel.id}" data-path="${escapeHtml(reel.storage_path || "")}">
         <div class="head-row">
@@ -303,56 +305,50 @@ uploadForm.addEventListener("submit", async (event) => {
   const fd = new FormData(uploadForm);
   const title = String(fd.get("title") || "").trim();
   const platform = String(fd.get("platform") || "Instagram");
-  const video = fd.get("video");
+  const videoUrl = String(fd.get("video_url") || "").trim();
 
-  if (!title || !(video instanceof File) || video.size === 0) return;
-  const fileSizeMb = video.size / (1024 * 1024);
-  if (fileSizeMb > MAX_UPLOAD_MB) {
-    alert(
-      `This file is ${fileSizeMb.toFixed(1)}MB. Max allowed here is ${MAX_UPLOAD_MB}MB. ` +
-        "Trim/compress the video or increase the Supabase bucket file size limit.",
-    );
+  if (!title || !videoUrl) return;
+  if (!/^https?:\/\/.+/i.test(videoUrl)) {
+    alert("Please enter a valid public video URL starting with http:// or https://");
     return;
   }
 
-  const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const userId = (await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out.")).data.user?.id;
   if (!userId) {
     window.location.href = "/index.html";
     return;
   }
 
-  const storagePath = `${userId}/${Date.now()}_${safeName}`;
   let saved = false;
-  const uploadTimeoutMs = getUploadTimeoutMs(video);
 
-  setSubmitLoading(true, "Uploading...");
+  setSubmitLoading(true, "Saving...");
   try {
-    const { error: uploadError } = await withTimeout(
-      supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: video.type || "video/mp4",
-      }),
-      uploadTimeoutMs,
-      "Video upload timed out.",
-    );
-    if (uploadError) throw uploadError;
+    const baseRow = {
+      user_id: userId,
+      title,
+      platform,
+      storage_path: videoUrl,
+      views: 0,
+      likes: 0,
+      comments: 0,
+      saves: 0,
+    };
 
-    const { error: insertError } = await withTimeout(
-      supabase.from(REELS_TABLE).insert({
-        user_id: userId,
-        title,
-        platform,
-        storage_path: storagePath,
-        views: 0,
-        likes: 0,
-        comments: 0,
-        saves: 0,
-      }),
+    let { error: insertError } = await withTimeout(
+      supabase.from(REELS_TABLE).insert({ ...baseRow, video_url: videoUrl }),
       REQUEST_TIMEOUT_MS,
       "Saving reel record timed out.",
     );
+
+    if (insertError && String(insertError.message || "").toLowerCase().includes("video_url")) {
+      const fallback = await withTimeout(
+        supabase.from(REELS_TABLE).insert(baseRow),
+        REQUEST_TIMEOUT_MS,
+        "Saving reel record timed out.",
+      );
+      insertError = fallback.error;
+    }
+
     if (insertError) throw insertError;
 
     saved = true;
@@ -360,15 +356,7 @@ uploadForm.addEventListener("submit", async (event) => {
   } catch (error) {
     setSubmitLoading(false);
     console.error("Create reel failed:", error);
-    const message = String(error?.message || "unknown error");
-    if (message.toLowerCase().includes("maximum allowed size")) {
-      alert(
-        `Failed to save reel: file exceeds storage limit. ` +
-          `Try a smaller file (<${MAX_UPLOAD_MB}MB) or increase bucket file size limit in Supabase Storage settings.`,
-      );
-    } else {
-      alert(`Failed to save reel: ${message}`);
-    }
+    alert(`Failed to save reel: ${String(error?.message || "unknown error")}`);
   } finally {
     setSubmitLoading(false);
     clearLegacyOverlays();
@@ -435,7 +423,8 @@ listEl.addEventListener("click", async (event) => {
 
   if (action === "delete") {
     try {
-      if (storagePath) {
+      // Remove storage object only for legacy records that used bucket paths.
+      if (storagePath && !/^https?:\/\//i.test(storagePath)) {
         await withTimeout(
           supabase.storage.from(REELS_BUCKET).remove([storagePath]),
           REQUEST_TIMEOUT_MS,

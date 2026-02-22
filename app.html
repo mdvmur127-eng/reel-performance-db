@@ -27,7 +27,7 @@
       <div id="view-overview" class="view active">
         <section class="panel">
           <h2>Add Reel</h2>
-          <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
+          <form id="upload-form" class="grid" method="post" action="#">
             <label>
               Reel name
               <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
@@ -42,8 +42,14 @@
               </select>
             </label>
             <label class="full">
-              Video file
-              <input id="video" name="video" type="file" accept="video/*" required />
+              Video URL
+              <input
+                id="video-url"
+                name="video_url"
+                type="url"
+                required
+                placeholder="https://example.com/video.mp4"
+              />
             </label>
             <div class="full form-actions">
               <button type="submit">Save Reel</button>

@@ -9,6 +9,7 @@ const authMessageEl = document.getElementById("auth-message");
 const signupForm = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
 let loaderEl = null;
+const REQUEST_TIMEOUT_MS = 8000;
 
 function setAuthMessage(message, isError = false) {
   if (!authMessageEl) return;
@@ -37,6 +38,18 @@ function setLoading(isLoading, text = "Processing...") {
   overlay.classList.toggle("hidden", !isLoading);
 }
 
+async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Request timed out. Please try again.")), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 if (signupForm) {
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -47,12 +60,14 @@ if (signupForm) {
 
     setLoading(true, "Creating account...");
     try {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await withTimeout(supabase.auth.signUp({ email, password }));
       if (error) {
         setAuthMessage(`Sign up failed: ${error.message}`, true);
         return;
       }
       setAuthMessage("Sign-up success. Check your email for confirmation if required.");
+    } catch (error) {
+      setAuthMessage(`Sign up failed: ${error.message || "unknown error"}`, true);
     } finally {
       setLoading(false);
     }
@@ -69,12 +84,14 @@ if (loginForm) {
 
     setLoading(true, "Logging in...");
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }));
       if (error) {
         setAuthMessage(`Login failed: ${error.message}`, true);
         return;
       }
       window.location.href = "/app.html";
+    } catch (error) {
+      setAuthMessage(`Login failed: ${error.message || "unknown error"}`, true);
     } finally {
       setLoading(false);
     }
@@ -82,14 +99,13 @@ if (loginForm) {
 }
 
 async function init() {
-  setLoading(true, "Checking session...");
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await withTimeout(supabase.auth.getUser(), 2500);
     if (data?.user) {
       window.location.href = "/app.html";
     }
-  } finally {
-    setLoading(false);
+  } catch {
+    // Keep login form interactive even if session check is slow/unavailable.
   }
 }
 

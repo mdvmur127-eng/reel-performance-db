@@ -8,34 +8,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const authMessageEl = document.getElementById("auth-message");
 const signupForm = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
-let loaderEl = null;
 const REQUEST_TIMEOUT_MS = 8000;
 
 function setAuthMessage(message, isError = false) {
   if (!authMessageEl) return;
   authMessageEl.textContent = message || "";
   authMessageEl.classList.toggle("error", Boolean(message && isError));
-}
-
-function ensureLoader() {
-  if (loaderEl) return loaderEl;
-  loaderEl = document.createElement("div");
-  loaderEl.className = "loading-overlay hidden";
-  loaderEl.innerHTML = `
-    <div class="loading-box">
-      <div class="spinner" aria-hidden="true"></div>
-      <div id="loading-text" class="loading-text">Processing...</div>
-    </div>
-  `;
-  document.body.appendChild(loaderEl);
-  return loaderEl;
-}
-
-function setLoading(isLoading, text = "Processing...") {
-  const overlay = ensureLoader();
-  const textEl = overlay.querySelector("#loading-text");
-  if (textEl) textEl.textContent = text;
-  overlay.classList.toggle("hidden", !isLoading);
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -58,7 +36,6 @@ if (signupForm) {
     const password = String(fd.get("password") || "");
     if (!email || !password) return;
 
-    setLoading(true, "Creating account...");
     try {
       const { error } = await withTimeout(supabase.auth.signUp({ email, password }));
       if (error) {
@@ -68,8 +45,6 @@ if (signupForm) {
       setAuthMessage("Sign-up success. Check your email for confirmation if required.");
     } catch (error) {
       setAuthMessage(`Sign up failed: ${error.message || "unknown error"}`, true);
-    } finally {
-      setLoading(false);
     }
   });
 }
@@ -82,7 +57,6 @@ if (loginForm) {
     const password = String(fd.get("password") || "");
     if (!email || !password) return;
 
-    setLoading(true, "Logging in...");
     try {
       const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }));
       if (error) {
@@ -92,8 +66,6 @@ if (loginForm) {
       window.location.href = "/app.html";
     } catch (error) {
       setAuthMessage(`Login failed: ${error.message || "unknown error"}`, true);
-    } finally {
-      setLoading(false);
     }
   });
 }

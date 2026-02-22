@@ -14,9 +14,7 @@ const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 let loaderEl = null;
-let loaderFailsafeTimer = null;
 const REQUEST_TIMEOUT_MS = 12000;
-const LOADER_MAX_MS = 15000;
 
 let currentUser = null;
 
@@ -72,18 +70,6 @@ function setLoading(isLoading, text = "Processing...") {
   const textEl = overlay.querySelector("#loading-text");
   if (textEl) textEl.textContent = text;
   overlay.classList.toggle("hidden", !isLoading);
-
-  if (loaderFailsafeTimer) {
-    clearTimeout(loaderFailsafeTimer);
-    loaderFailsafeTimer = null;
-  }
-
-  if (isLoading) {
-    loaderFailsafeTimer = setTimeout(() => {
-      overlay.classList.add("hidden");
-      console.warn("Loader auto-hidden by failsafe timeout.");
-    }, LOADER_MAX_MS);
-  }
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
@@ -249,12 +235,7 @@ uploadForm.addEventListener("submit", async (event) => {
 });
 
 refreshRankingBtn.addEventListener("click", async () => {
-  setLoading(true, "Refreshing ranking...");
-  try {
-    await render();
-  } finally {
-    setLoading(false);
-  }
+  await render();
 });
 
 listEl.addEventListener("click", async (event) => {
@@ -283,7 +264,6 @@ listEl.addEventListener("click", async (event) => {
     };
 
     try {
-      setLoading(true, "Saving metrics...");
       const { error } = await withTimeout(
         supabase.from(REELS_TABLE).update(payload).eq("id", id).eq("user_id", currentUser.id),
         REQUEST_TIMEOUT_MS,
@@ -294,14 +274,11 @@ listEl.addEventListener("click", async (event) => {
     } catch (error) {
       console.error(error);
       alert(`Failed to update metrics: ${error.message || "unknown error"}`);
-    } finally {
-      setLoading(false);
     }
   }
 
   if (action === "delete") {
     try {
-      setLoading(true, "Deleting reel...");
       if (storagePath) {
         await withTimeout(
           supabase.storage.from(REELS_BUCKET).remove([storagePath]),
@@ -319,36 +296,24 @@ listEl.addEventListener("click", async (event) => {
     } catch (error) {
       console.error(error);
       alert(`Failed to delete reel: ${error.message || "unknown error"}`);
-    } finally {
-      setLoading(false);
     }
   }
 });
 
 logoutBtn.addEventListener("click", async () => {
-  setLoading(true, "Logging out...");
-  try {
-    await withTimeout(supabase.auth.signOut(), REQUEST_TIMEOUT_MS, "Logout timed out.");
-    window.location.href = "/index.html";
-  } finally {
-    setLoading(false);
-  }
+  await withTimeout(supabase.auth.signOut(), REQUEST_TIMEOUT_MS, "Logout timed out.");
+  window.location.href = "/index.html";
 });
 
 async function init() {
-  setLoading(true, "Loading your reels...");
-  try {
-    const user = await getUser().catch(() => null);
-    if (!user) {
-      window.location.href = "/index.html";
-      return;
-    }
-    currentUser = user;
-    userEmailEl.textContent = user.email || "";
-    await render();
-  } finally {
-    setLoading(false);
+  const user = await getUser().catch(() => null);
+  if (!user) {
+    window.location.href = "/index.html";
+    return;
   }
+  currentUser = user;
+  userEmailEl.textContent = user.email || "";
+  await render();
 }
 
 init();

@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app">
-      <section id="auth-screen" class="panel">
+      <section class="panel auth-shell">
         <h1>Reel Performance DB</h1>
         <p class="sub">Sign up or log in to manage your own reels only.</p>
         <div class="auth-grid">
@@ -39,59 +39,7 @@
         </div>
         <p id="auth-message" class="meta"></p>
       </section>
-
-      <div id="app-screen" class="hidden">
-        <header class="top">
-          <div>
-            <h1>Reel Performance DB</h1>
-            <p class="sub">Upload videos, track metrics, decide what to execute again.</p>
-          </div>
-          <div class="user-actions">
-            <span id="user-email" class="meta"></span>
-            <button id="logout-btn" type="button" class="secondary">Log Out</button>
-          </div>
-        </header>
-
-        <section class="panel">
-          <h2>Add Reel</h2>
-          <form id="upload-form" class="grid" method="post" enctype="multipart/form-data" action="#">
-            <label>
-              Reel name
-              <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
-            </label>
-            <label>
-              Platform
-              <select id="platform" name="platform">
-                <option>Instagram</option>
-                <option>TikTok</option>
-                <option>YouTube Shorts</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label class="full">
-              Video file
-              <input id="video" name="video" type="file" accept="video/*" required />
-            </label>
-            <div class="full form-actions">
-              <button type="submit">Save Reel</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="section-head">
-            <h2>Best Candidates To Execute Again</h2>
-            <button id="refresh-ranking" type="button" class="secondary">Refresh Ranking</button>
-          </div>
-          <div id="ranking" class="ranking"></div>
-        </section>
-
-        <section class="panel">
-          <h2>Reels Database</h2>
-          <div id="list" class="list"></div>
-        </section>
-      </div>
     </main>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="/auth.js"></script>
   </body>
 </html>

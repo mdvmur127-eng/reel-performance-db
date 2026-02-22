@@ -7,18 +7,12 @@ const REELS_BUCKET = "reels";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
-const authScreen = document.getElementById("auth-screen");
-const appScreen = document.getElementById("app-screen");
-const authMessageEl = document.getElementById("auth-message");
-const signupForm = document.getElementById("signup-form");
-const loginForm = document.getElementById("login-form");
-const logoutBtn = document.getElementById("logout-btn");
-const userEmailEl = document.getElementById("user-email");
-
 const uploadForm = document.getElementById("upload-form");
 const listEl = document.getElementById("list");
 const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
+const logoutBtn = document.getElementById("logout-btn");
+const userEmailEl = document.getElementById("user-email");
 
 let currentUser = null;
 
@@ -53,25 +47,6 @@ function metricInput(name, value) {
       <input type="number" min="0" step="1" name="${name}" value="${value || 0}" />
     </label>
   `;
-}
-
-function setAuthMessage(message, isError = false) {
-  authMessageEl.textContent = message || "";
-  authMessageEl.classList.toggle("error", Boolean(message && isError));
-}
-
-function setLoggedOutUi() {
-  currentUser = null;
-  authScreen.classList.remove("hidden");
-  appScreen.classList.add("hidden");
-  userEmailEl.textContent = "";
-}
-
-function setLoggedInUi(user) {
-  currentUser = user;
-  authScreen.classList.add("hidden");
-  appScreen.classList.remove("hidden");
-  userEmailEl.textContent = user.email || "";
 }
 
 async function getUser() {
@@ -161,54 +136,10 @@ async function render() {
   listEl.innerHTML = cards.join("");
 }
 
-signupForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fd = new FormData(signupForm);
-  const email = String(fd.get("email") || "").trim();
-  const password = String(fd.get("password") || "");
-  if (!email || !password) return;
-
-  const { error } = await supabase.auth.signUp({ email, password });
-  if (error) {
-    setAuthMessage(`Sign up failed: ${error.message}`, true);
-    return;
-  }
-  setAuthMessage("Sign-up success. Check your email for confirmation if required.");
-});
-
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fd = new FormData(loginForm);
-  const email = String(fd.get("email") || "").trim();
-  const password = String(fd.get("password") || "");
-  if (!email || !password) return;
-
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    setAuthMessage(`Login failed: ${error.message}`, true);
-    return;
-  }
-
-  const user = await getUser();
-  if (!user) {
-    setAuthMessage("Login succeeded but no user session found.", true);
-    return;
-  }
-  setAuthMessage("");
-  setLoggedInUi(user);
-  await render();
-});
-
-logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  setLoggedOutUi();
-  setAuthMessage("Logged out.");
-});
-
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentUser) {
-    setLoggedOutUi();
+    window.location.href = "/index.html";
     return;
   }
 
@@ -220,12 +151,9 @@ uploadForm.addEventListener("submit", async (event) => {
   if (!title || !(video instanceof File) || video.size === 0) return;
 
   const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-
-  // Requirement: store current authenticated user id when creating a reel.
   const userId = (await supabase.auth.getUser()).data.user?.id;
   if (!userId) {
-    alert("No authenticated user.");
-    setLoggedOutUi();
+    window.location.href = "/index.html";
     return;
   }
 
@@ -272,10 +200,7 @@ listEl.addEventListener("click", async (event) => {
 
   const id = (card.dataset.id || "").trim();
   const storagePath = card.dataset.path || "";
-  if (!id) {
-    alert("Failed to read reel id from card.");
-    return;
-  }
+  if (!id) return;
 
   if (action === "save") {
     const formEl = card.querySelector(".metrics");
@@ -322,22 +247,19 @@ listEl.addEventListener("click", async (event) => {
   }
 });
 
-supabase.auth.onAuthStateChange(async (_event, session) => {
-  if (!session?.user) {
-    setLoggedOutUi();
-    return;
-  }
-  setLoggedInUi(session.user);
-  await render();
+logoutBtn.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  window.location.href = "/index.html";
 });
 
 async function init() {
   const user = await getUser().catch(() => null);
   if (!user) {
-    setLoggedOutUi();
+    window.location.href = "/index.html";
     return;
   }
-  setLoggedInUi(user);
+  currentUser = user;
+  userEmailEl.textContent = user.email || "";
   await render();
 }
 

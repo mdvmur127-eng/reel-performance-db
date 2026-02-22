@@ -74,6 +74,11 @@ body {
   gap: 12px;
 }
 
+.auth-shell {
+  max-width: 760px;
+  margin: 16px auto 0;
+}
+
 .auth-form {
   border: 1px solid var(--line);
   border-radius: 12px;

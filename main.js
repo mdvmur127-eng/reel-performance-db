@@ -25,6 +25,7 @@ const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
 const MIN_UPLOAD_TIMEOUT_MS = 120000;
 const MAX_UPLOAD_TIMEOUT_MS = 300000;
+const MAX_UPLOAD_MB = 45;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
@@ -305,6 +306,14 @@ uploadForm.addEventListener("submit", async (event) => {
   const video = fd.get("video");
 
   if (!title || !(video instanceof File) || video.size === 0) return;
+  const fileSizeMb = video.size / (1024 * 1024);
+  if (fileSizeMb > MAX_UPLOAD_MB) {
+    alert(
+      `This file is ${fileSizeMb.toFixed(1)}MB. Max allowed here is ${MAX_UPLOAD_MB}MB. ` +
+        "Trim/compress the video or increase the Supabase bucket file size limit.",
+    );
+    return;
+  }
 
   const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const userId = (await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out.")).data.user?.id;
@@ -351,7 +360,15 @@ uploadForm.addEventListener("submit", async (event) => {
   } catch (error) {
     setSubmitLoading(false);
     console.error("Create reel failed:", error);
-    alert(`Failed to save reel: ${error.message || "unknown error"}`);
+    const message = String(error?.message || "unknown error");
+    if (message.toLowerCase().includes("maximum allowed size")) {
+      alert(
+        `Failed to save reel: file exceeds storage limit. ` +
+          `Try a smaller file (<${MAX_UPLOAD_MB}MB) or increase bucket file size limit in Supabase Storage settings.`,
+      );
+    } else {
+      alert(`Failed to save reel: ${message}`);
+    }
   } finally {
     setSubmitLoading(false);
     clearLegacyOverlays();

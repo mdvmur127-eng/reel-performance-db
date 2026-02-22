@@ -3,29 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Reel Performance DB</title>
+    <title>Sign Up | Reel Performance DB</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="app">
       <section class="panel auth-shell">
         <h1>Reel Performance DB</h1>
-        <p class="sub">Sign in to manage your own reels only.</p>
-        <form id="login-form" class="auth-form" method="post" action="#">
-          <h2>Log in</h2>
+        <p class="sub">Create an account to start tracking your reels.</p>
+        <form id="signup-form" class="auth-form" method="post" action="#">
+          <h2>Create account</h2>
           <label>
             Email
-            <input id="login-email" name="email" type="email" required autocomplete="email" />
+            <input id="signup-email" name="email" type="email" required autocomplete="email" />
           </label>
           <label>
             Password
-            <input id="login-password" name="password" type="password" required autocomplete="current-password" />
+            <input id="signup-password" name="password" type="password" required minlength="6" autocomplete="new-password" />
           </label>
-          <button type="submit">Log In</button>
+          <button type="submit">Sign Up</button>
         </form>
         <p class="meta auth-link-row">
-          No account?
-          <a href="/signup.html">Sign up?</a>
+          Already have an account?
+          <a href="/index.html">Log in</a>
         </p>
         <p id="auth-message" class="meta"></p>
       </section>

@@ -10,39 +10,44 @@ const signupForm = document.getElementById("signup-form");
 const loginForm = document.getElementById("login-form");
 
 function setAuthMessage(message, isError = false) {
+  if (!authMessageEl) return;
   authMessageEl.textContent = message || "";
   authMessageEl.classList.toggle("error", Boolean(message && isError));
 }
 
-signupForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fd = new FormData(signupForm);
-  const email = String(fd.get("email") || "").trim();
-  const password = String(fd.get("password") || "");
-  if (!email || !password) return;
+if (signupForm) {
+  signupForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fd = new FormData(signupForm);
+    const email = String(fd.get("email") || "").trim();
+    const password = String(fd.get("password") || "");
+    if (!email || !password) return;
 
-  const { error } = await supabase.auth.signUp({ email, password });
-  if (error) {
-    setAuthMessage(`Sign up failed: ${error.message}`, true);
-    return;
-  }
-  setAuthMessage("Sign-up success. Check your email for confirmation if required.");
-});
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      setAuthMessage(`Sign up failed: ${error.message}`, true);
+      return;
+    }
+    setAuthMessage("Sign-up success. Check your email for confirmation if required.");
+  });
+}
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const fd = new FormData(loginForm);
-  const email = String(fd.get("email") || "").trim();
-  const password = String(fd.get("password") || "");
-  if (!email || !password) return;
+if (loginForm) {
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fd = new FormData(loginForm);
+    const email = String(fd.get("email") || "").trim();
+    const password = String(fd.get("password") || "");
+    if (!email || !password) return;
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    setAuthMessage(`Login failed: ${error.message}`, true);
-    return;
-  }
-  window.location.href = "/app.html";
-});
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuthMessage(`Login failed: ${error.message}`, true);
+      return;
+    }
+    window.location.href = "/app.html";
+  });
+}
 
 async function init() {
   const { data } = await supabase.auth.getUser();

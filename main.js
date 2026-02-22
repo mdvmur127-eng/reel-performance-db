@@ -13,6 +13,7 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
+let loaderEl = null;
 
 let currentUser = null;
 
@@ -47,6 +48,27 @@ function metricInput(name, value) {
       <input type="number" min="0" step="1" name="${name}" value="${value || 0}" />
     </label>
   `;
+}
+
+function ensureLoader() {
+  if (loaderEl) return loaderEl;
+  loaderEl = document.createElement("div");
+  loaderEl.className = "loading-overlay hidden";
+  loaderEl.innerHTML = `
+    <div class="loading-box">
+      <div class="spinner" aria-hidden="true"></div>
+      <div id="loading-text" class="loading-text">Processing...</div>
+    </div>
+  `;
+  document.body.appendChild(loaderEl);
+  return loaderEl;
+}
+
+function setLoading(isLoading, text = "Processing...") {
+  const overlay = ensureLoader();
+  const textEl = overlay.querySelector("#loading-text");
+  if (textEl) textEl.textContent = text;
+  overlay.classList.toggle("hidden", !isLoading);
 }
 
 async function getUser() {
@@ -159,6 +181,7 @@ uploadForm.addEventListener("submit", async (event) => {
 
   const storagePath = `${userId}/${Date.now()}_${safeName}`;
 
+  setLoading(true, "Uploading reel...");
   try {
     const { error: uploadError } = await supabase.storage.from(REELS_BUCKET).upload(storagePath, video, {
       cacheControl: "3600",
@@ -184,10 +207,19 @@ uploadForm.addEventListener("submit", async (event) => {
   } catch (error) {
     console.error("Create reel failed:", error);
     alert(`Failed to save reel: ${error.message || "unknown error"}`);
+  } finally {
+    setLoading(false);
   }
 });
 
-refreshRankingBtn.addEventListener("click", () => render());
+refreshRankingBtn.addEventListener("click", async () => {
+  setLoading(true, "Refreshing ranking...");
+  try {
+    await render();
+  } finally {
+    setLoading(false);
+  }
+});
 
 listEl.addEventListener("click", async (event) => {
   const target = event.target;
@@ -215,6 +247,7 @@ listEl.addEventListener("click", async (event) => {
     };
 
     try {
+      setLoading(true, "Saving metrics...");
       const { error } = await supabase
         .from(REELS_TABLE)
         .update(payload)
@@ -225,11 +258,14 @@ listEl.addEventListener("click", async (event) => {
     } catch (error) {
       console.error(error);
       alert(`Failed to update metrics: ${error.message || "unknown error"}`);
+    } finally {
+      setLoading(false);
     }
   }
 
   if (action === "delete") {
     try {
+      setLoading(true, "Deleting reel...");
       if (storagePath) {
         await supabase.storage.from(REELS_BUCKET).remove([storagePath]);
       }
@@ -243,24 +279,36 @@ listEl.addEventListener("click", async (event) => {
     } catch (error) {
       console.error(error);
       alert(`Failed to delete reel: ${error.message || "unknown error"}`);
+    } finally {
+      setLoading(false);
     }
   }
 });
 
 logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  window.location.href = "/index.html";
+  setLoading(true, "Logging out...");
+  try {
+    await supabase.auth.signOut();
+    window.location.href = "/index.html";
+  } finally {
+    setLoading(false);
+  }
 });
 
 async function init() {
-  const user = await getUser().catch(() => null);
-  if (!user) {
-    window.location.href = "/index.html";
-    return;
+  setLoading(true, "Loading your reels...");
+  try {
+    const user = await getUser().catch(() => null);
+    if (!user) {
+      window.location.href = "/index.html";
+      return;
+    }
+    currentUser = user;
+    userEmailEl.textContent = user.email || "";
+    await render();
+  } finally {
+    setLoading(false);
   }
-  currentUser = user;
-  userEmailEl.textContent = user.email || "";
-  await render();
 }
 
 init();

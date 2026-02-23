@@ -62,6 +62,11 @@ function metricInput(name, value) {
   `;
 }
 
+function getReelUrl(reel) {
+  const candidate = String(reel.video_url || reel.storage_path || "").trim();
+  return /^https?:\/\//i.test(candidate) ? candidate : "";
+}
+
 function clearLegacyOverlays() {
   document.querySelectorAll(".loading-overlay").forEach((node) => node.remove());
 }
@@ -137,13 +142,20 @@ async function render() {
     .join("");
 
   const cards = withScores.map(
-    (reel) => `
+    (reel) => {
+      const reelUrl = getReelUrl(reel);
+      return `
       <article class="card" data-id="${reel.id}" data-path="${escapeHtml(reel.storage_path || "")}">
         <div class="head-row">
           <strong>${escapeHtml(reel.title)}</strong>
           <span class="meta">${escapeHtml(reel.platform)}</span>
         </div>
         <div class="meta">Added: ${formatDate(reel.created_at)} • Score: ${reel.rankScore}</div>
+        ${
+          reelUrl
+            ? `<a class="reel-url-link" href="${escapeHtml(reelUrl)}" target="_blank" rel="noopener noreferrer">Open Reel URL</a>`
+            : '<div class="meta">No public reel URL saved.</div>'
+        }
         <form class="metrics">
           ${metricInput("views", reel.views)}
           ${metricInput("likes", reel.likes)}
@@ -155,7 +167,8 @@ async function render() {
           <button type="button" data-action="delete" class="danger">Delete</button>
         </div>
       </article>
-    `,
+    `;
+    },
   );
 
   listEl.innerHTML = cards.join("");

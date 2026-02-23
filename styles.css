@@ -381,6 +381,15 @@ button.secondary:hover {
   font-size: 13px;
 }
 
+.reel-url-link {
+  margin-top: 8px;
+  display: inline-flex;
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .metrics {
   margin-top: 12px;
   display: grid;

@@ -4,6 +4,8 @@ const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REELS_BUCKET = "reels";
+const INSTAGRAM_CLIENT_ID = ""; // Set your Meta app client id to enable OAuth connect.
+const IG_TOKEN_STORAGE_KEY = "instagram_user_access_token";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -16,7 +18,10 @@ const userEmailEl = document.getElementById("user-email");
 const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
+const connectInstagramBtn = document.getElementById("connect-instagram-btn");
+const disconnectInstagramBtn = document.getElementById("disconnect-instagram-btn");
 const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
+const chipButtons = document.querySelectorAll(".chip");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const viewOverview = document.getElementById("view-overview");
 const viewInsights = document.getElementById("view-insights");
@@ -32,6 +37,7 @@ const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
 
 let currentUser = null;
 let cachedReels = [];
+let selectedKind = "all";
 
 function score(reel) {
   const views = Number(reel.views) || 0;
@@ -88,6 +94,48 @@ function setSyncStatus(message, isError = false) {
   instagramSyncStatusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
 }
 
+function saveInstagramToken(token) {
+  localStorage.setItem(IG_TOKEN_STORAGE_KEY, token);
+  if (instagramTokenEl) instagramTokenEl.value = token;
+}
+
+function getInstagramToken() {
+  return String(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "").trim();
+}
+
+function clearInstagramToken() {
+  localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
+  if (instagramTokenEl) instagramTokenEl.value = "";
+}
+
+function inferKindFromUrl(url) {
+  const value = String(url || "").toLowerCase();
+  if (/\.(jpg|jpeg|png|webp|gif)(\?.*)?$/.test(value)) return "static";
+  if (/\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/.test(value)) return "video";
+  if (value.includes("instagram.com/p/")) return "static";
+  if (
+    value.includes("instagram.com/reel/") ||
+    value.includes("youtube.com") ||
+    value.includes("youtu.be") ||
+    value.includes("tiktok.com")
+  ) {
+    return "video";
+  }
+  return "video";
+}
+
+function getReelKind(reel) {
+  const dbKind = String(reel.reel_type || reel.media_type || "").toLowerCase();
+  if (dbKind.includes("image") || dbKind === "static") return "static";
+  if (dbKind.includes("video") || dbKind === "video" || dbKind === "reel") return "video";
+  return inferKindFromUrl(reel.video_url || reel.storage_path);
+}
+
+function filterByKind(reels) {
+  if (selectedKind === "all") return reels;
+  return reels.filter((reel) => getReelKind(reel) === selectedKind);
+}
+
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -140,15 +188,16 @@ async function render() {
     return;
   }
   cachedReels = reels;
+  const visibleReels = filterByKind(reels);
 
-  if (!reels.length) {
+  if (!visibleReels.length) {
     listEl.innerHTML = '<div class="meta">No reels yet. Add your first one above.</div>';
     rankingEl.innerHTML = '<div class="meta">Add reels with metrics to see ranking.</div>';
     renderInsights([]);
     return;
   }
 
-  const withScores = reels.map((reel) => ({ ...reel, rankScore: score(reel) }));
+  const withScores = visibleReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
   const ranked = [...withScores].sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
 
   rankingEl.innerHTML = ranked
@@ -172,7 +221,7 @@ async function render() {
       <article class="card" data-id="${reel.id}" data-path="${escapeHtml(reel.storage_path || "")}">
         <div class="head-row">
           <strong>${escapeHtml(reel.title)}</strong>
-          <span class="meta">${escapeHtml(reel.platform)}</span>
+          <span class="meta">${escapeHtml(reel.platform)} • ${getReelKind(reel)}</span>
         </div>
         <div class="meta">Added: ${formatDate(reel.created_at)} • Score: ${reel.rankScore}</div>
         ${
@@ -340,6 +389,7 @@ uploadForm.addEventListener("submit", async (event) => {
       title,
       platform,
       storage_path: videoUrl,
+      reel_type: inferKindFromUrl(videoUrl),
       views: 0,
       likes: 0,
       comments: 0,
@@ -384,13 +434,44 @@ refreshRankingBtn.addEventListener("click", async () => {
   await render();
 });
 
+function handleInstagramOAuthReturn() {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  if (!hash.includes("access_token=")) return;
+  const params = new URLSearchParams(hash);
+  const token = params.get("access_token");
+  if (token) {
+    saveInstagramToken(token);
+    setSyncStatus("Instagram connected. You can now sync posts.");
+  }
+  history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+}
+
+connectInstagramBtn?.addEventListener("click", () => {
+  if (!INSTAGRAM_CLIENT_ID) {
+    setSyncStatus("Set INSTAGRAM_CLIENT_ID in main.js to enable OAuth connect.", true);
+    return;
+  }
+  const redirectUri = `${window.location.origin}/app.html`;
+  const authUrl = new URL("https://www.instagram.com/oauth/authorize");
+  authUrl.searchParams.set("client_id", INSTAGRAM_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("response_type", "token");
+  authUrl.searchParams.set("scope", "user_profile,user_media");
+  window.location.href = authUrl.toString();
+});
+
+disconnectInstagramBtn?.addEventListener("click", () => {
+  clearInstagramToken();
+  setSyncStatus("Instagram token removed.");
+});
+
 instagramSyncBtn?.addEventListener("click", async () => {
   if (!currentUser) {
     window.location.href = "/index.html";
     return;
   }
 
-  const token = String(instagramTokenEl?.value || "").trim();
+  const token = getInstagramToken();
   const limit = Math.max(1, Math.min(50, Number(instagramLimitEl?.value || 12)));
   if (!token) {
     setSyncStatus("Paste your Instagram access token first.", true);
@@ -422,6 +503,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
           platform: "Instagram",
           storage_path: permalink,
           video_url: permalink,
+          reel_type: String(item.media_type || "").toLowerCase().includes("image") ? "static" : "video",
           views: 0,
           likes: 0,
           comments: 0,
@@ -451,6 +533,14 @@ instagramSyncBtn?.addEventListener("click", async () => {
   } finally {
     instagramSyncBtn.disabled = false;
   }
+});
+
+chipButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    selectedKind = button.dataset.kind || "all";
+    chipButtons.forEach((item) => item.classList.toggle("active", item === button));
+    await render();
+  });
 });
 
 tabButtons.forEach((button) => {
@@ -533,6 +623,11 @@ logoutBtn.addEventListener("click", async () => {
 
 async function init() {
   clearLegacyOverlays();
+  handleInstagramOAuthReturn();
+  const storedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
+  if (storedToken && instagramTokenEl && !instagramTokenEl.value) {
+    instagramTokenEl.value = storedToken;
+  }
   const user = await getUser().catch(() => null);
   if (!user) {
     window.location.href = "/index.html";

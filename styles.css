@@ -181,6 +181,12 @@ h2 {
   margin-bottom: 12px;
 }
 
+.sync-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .tabs {
   display: flex;
   gap: 10px;
@@ -393,6 +399,29 @@ button.secondary:hover {
   font-size: 13px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.chip-row {
+  margin: 0 0 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  background: var(--white);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--black);
 }
 
 .metrics {

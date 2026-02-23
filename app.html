@@ -28,7 +28,11 @@
         <section class="panel">
           <div class="section-head">
             <h2>Instagram Sync</h2>
-            <button id="sync-instagram-btn" type="button" class="secondary">Sync Posts</button>
+            <div class="sync-actions">
+              <button id="connect-instagram-btn" type="button" class="secondary">Connect Instagram</button>
+              <button id="disconnect-instagram-btn" type="button" class="secondary">Disconnect</button>
+              <button id="sync-instagram-btn" type="button" class="secondary">Sync Posts</button>
+            </div>
           </div>
           <div class="grid">
             <label class="full">
@@ -90,6 +94,11 @@
 
         <section class="panel">
           <h2>Reels Database</h2>
+          <div class="chip-row" aria-label="Reel type filters">
+            <button id="chip-all" class="chip active" type="button" data-kind="all">All</button>
+            <button id="chip-video" class="chip" type="button" data-kind="video">Videos</button>
+            <button id="chip-static" class="chip" type="button" data-kind="static">Static</button>
+          </div>
           <div id="list" class="list"></div>
         </section>
       </div>

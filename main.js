@@ -119,6 +119,74 @@ async function getPlayableVideoUrl(reel) {
   return "";
 }
 
+function escapeAttr(value) {
+  return String(value).replaceAll('"', "&quot;");
+}
+
+function toEmbedUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+
+    if (host.includes("youtube.com")) {
+      const videoId = url.searchParams.get("v");
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (host.includes("youtu.be")) {
+      const videoId = url.pathname.split("/").filter(Boolean)[0];
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (host.includes("instagram.com")) {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const reelIdx = parts.findIndex((segment) => segment === "reel" || segment === "p");
+      if (reelIdx >= 0 && parts[reelIdx + 1]) {
+        return `https://www.instagram.com/${parts[reelIdx]}/${parts[reelIdx + 1]}/embed`;
+      }
+    }
+    if (host.includes("tiktok.com")) {
+      const match = url.pathname.match(/\/video\/(\d+)/);
+      if (match?.[1]) return `https://www.tiktok.com/embed/v2/${match[1]}`;
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function isDirectVideoUrl(rawUrl) {
+  return /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(rawUrl);
+}
+
+function getVideoMarkup(rawUrl) {
+  const safeUrl = escapeAttr(rawUrl);
+  const embedUrl = toEmbedUrl(rawUrl);
+
+  if (embedUrl) {
+    return `
+      <iframe
+        class="video-embed"
+        src="${escapeAttr(embedUrl)}"
+        loading="lazy"
+        allow="autoplay; encrypted-media; picture-in-picture"
+        allowfullscreen
+        referrerpolicy="strict-origin-when-cross-origin"
+        title="Embedded reel">
+      </iframe>
+      <a class="meta video-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open original link</a>
+    `;
+  }
+
+  if (isDirectVideoUrl(rawUrl)) {
+    return `<video controls src="${safeUrl}"></video>`;
+  }
+
+  // Unknown URL type: show direct link + try player as fallback.
+  return `
+    <video controls src="${safeUrl}"></video>
+    <a class="meta video-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open video link</a>
+  `;
+}
+
 async function render() {
   if (!currentUser) return;
 
@@ -167,7 +235,7 @@ async function render() {
           <span class="meta">${escapeHtml(reel.platform)}</span>
         </div>
         <div class="meta">Added: ${formatDate(reel.created_at)} • Score: ${reel.rankScore}</div>
-        ${videoUrl ? `<video controls src="${videoUrl}"></video>` : '<div class="meta">Video preview unavailable.</div>'}
+        ${videoUrl ? getVideoMarkup(videoUrl) : '<div class="meta">Video preview unavailable.</div>'}
         <form class="metrics">
           ${metricInput("views", reel.views)}
           ${metricInput("likes", reel.likes)}

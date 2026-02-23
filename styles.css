@@ -416,6 +416,20 @@ video {
   border: 1px solid var(--line-strong);
 }
 
+.video-embed {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--black);
+}
+
+.video-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--ink);
+}
+
 #refresh-ranking {
   background: var(--white);
   color: var(--ink);

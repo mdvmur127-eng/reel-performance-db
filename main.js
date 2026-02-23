@@ -13,6 +13,10 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
+const instagramTokenEl = document.getElementById("instagram-token");
+const instagramLimitEl = document.getElementById("instagram-limit");
+const instagramSyncBtn = document.getElementById("sync-instagram-btn");
+const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const viewOverview = document.getElementById("view-overview");
 const viewInsights = document.getElementById("view-insights");
@@ -78,6 +82,12 @@ function setSubmitLoading(isLoading, label = "Uploading...") {
   submitBtn.textContent = isLoading ? label : submitBtnDefaultLabel;
 }
 
+function setSyncStatus(message, isError = false) {
+  if (!instagramSyncStatusEl) return;
+  instagramSyncStatusEl.textContent = message;
+  instagramSyncStatusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
+}
+
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out. Please try again.") {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
@@ -101,6 +111,20 @@ async function getAllReelsForUser(userId) {
   const { data, error } = await withTimeout(query, REQUEST_TIMEOUT_MS, "Loading reels timed out.");
   if (error) throw error;
   return data || [];
+}
+
+async function fetchInstagramMedia(token, limit = 12) {
+  const url = new URL("https://graph.instagram.com/me/media");
+  url.searchParams.set("fields", "id,caption,media_type,permalink,timestamp");
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("access_token", token);
+
+  const response = await withTimeout(fetch(url.toString()), REQUEST_TIMEOUT_MS, "Instagram request timed out.");
+  const payload = await response.json();
+  if (!response.ok || payload.error) {
+    throw new Error(payload?.error?.message || "Failed to fetch Instagram media.");
+  }
+  return Array.isArray(payload.data) ? payload.data : [];
 }
 
 async function render() {
@@ -358,6 +382,75 @@ uploadForm.addEventListener("submit", async (event) => {
 
 refreshRankingBtn.addEventListener("click", async () => {
   await render();
+});
+
+instagramSyncBtn?.addEventListener("click", async () => {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+
+  const token = String(instagramTokenEl?.value || "").trim();
+  const limit = Math.max(1, Math.min(50, Number(instagramLimitEl?.value || 12)));
+  if (!token) {
+    setSyncStatus("Paste your Instagram access token first.", true);
+    return;
+  }
+
+  instagramSyncBtn.disabled = true;
+  setSyncStatus("Syncing Instagram posts...");
+  try {
+    const media = await fetchInstagramMedia(token, limit);
+    if (!media.length) {
+      setSyncStatus("No posts found for this token.");
+      return;
+    }
+
+    const existing = await getAllReelsForUser(currentUser.id);
+    const existingUrls = new Set(
+      existing.map((reel) => String(reel.video_url || reel.storage_path || "").trim()).filter(Boolean),
+    );
+
+    const rows = media
+      .map((item) => {
+        const permalink = String(item.permalink || "").trim();
+        if (!permalink || existingUrls.has(permalink)) return null;
+        const title = String(item.caption || "").split("\n")[0].trim() || `Instagram post ${item.id}`;
+        return {
+          user_id: currentUser.id,
+          title: title.slice(0, 120),
+          platform: "Instagram",
+          storage_path: permalink,
+          video_url: permalink,
+          views: 0,
+          likes: 0,
+          comments: 0,
+          saves: 0,
+        };
+      })
+      .filter(Boolean);
+
+    if (!rows.length) {
+      setSyncStatus("Everything is already synced.");
+      return;
+    }
+
+    let { error } = await supabase.from(REELS_TABLE).insert(rows);
+    if (error && String(error.message || "").toLowerCase().includes("video_url")) {
+      const fallbackRows = rows.map(({ video_url, ...rest }) => rest);
+      const fallback = await supabase.from(REELS_TABLE).insert(fallbackRows);
+      error = fallback.error;
+    }
+    if (error) throw error;
+
+    setSyncStatus(`Imported ${rows.length} new Instagram post(s).`);
+    await render();
+  } catch (error) {
+    console.error(error);
+    setSyncStatus(`Sync failed: ${error.message || "unknown error"}`, true);
+  } finally {
+    instagramSyncBtn.disabled = false;
+  }
 });
 
 tabButtons.forEach((button) => {

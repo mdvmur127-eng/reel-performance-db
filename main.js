@@ -50,6 +50,12 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function normalizePercentValue(value) {
+  if (!Number.isFinite(value)) return null;
+  const normalized = value > 0 && value <= 1 ? value * 100 : value;
+  return clamp(normalized, 0, 100);
+}
+
 function parsePastedMetric(value, { percent = false } = {}) {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -62,7 +68,7 @@ function parsePastedMetric(value, { percent = false } = {}) {
     .trim();
   const parsed = Number.parseFloat(normalized);
   if (!Number.isFinite(parsed)) return null;
-  return percent ? clamp(parsed, 0, 100) : Math.max(0, parsed);
+  return percent ? normalizePercentValue(parsed) : Math.max(0, parsed);
 }
 
 function score(reel) {
@@ -71,9 +77,13 @@ function score(reel) {
   const comments = toNumber(reel.comments, 0);
   const saves = toNumber(reel.saves, 0);
   const reelKind = getReelKind(reel);
-  const avgWatchTime = toNumber(reel.avg_watch_time, 0);
-  const holdRate3s = clamp(toNumber(reel.hold_rate_3s, 0), 0, 100);
-  const rewatches = toNumber(reel.rewatches, 0);
+  const avgWatchTime = toNumber(reel.average_watch_time ?? reel.avg_watch_time, 0);
+  let skipRate = toNumber(reel.this_reel_skip_rate ?? reel.skip_rate, Number.NaN);
+  if (!Number.isFinite(skipRate)) {
+    const holdRateFallback = toNumber(reel.hold_rate_3s, Number.NaN);
+    skipRate = Number.isFinite(holdRateFallback) ? 100 - holdRateFallback : 100;
+  }
+  skipRate = normalizePercentValue(skipRate) ?? 100;
   const accountsReached = Math.max(toNumber(reel.accounts_reached, 0), views);
 
   const denominator = Math.max(views, 1);
@@ -85,9 +95,8 @@ function score(reel) {
   }
 
   const watchTimeScore = Math.min(avgWatchTime, 60) / 60;
-  const holdRateScore = holdRate3s / 100;
-  const rewatchScore = Math.min(rewatches / denominator, 1.5) / 1.5;
-  const retentionSignal = watchTimeScore * 0.4 + holdRateScore * 0.4 + rewatchScore * 0.2;
+  const lowSkipScore = 1 - skipRate / 100;
+  const retentionSignal = watchTimeScore * 0.6 + lowSkipScore * 0.4;
 
   return Number((engagementRate * 55 + boostedReach * 25 + retentionSignal * 20).toFixed(2));
 }
@@ -364,7 +373,16 @@ async function getInstagramMetrics(token, item) {
   const saves = toMetricNumber(item.save_count || item.saves);
   let views = toMetricNumber(item.video_view_count || item.view_count || item.views || item.play_count || item.plays);
   const accountsReached = await fetchFirstInstagramInsightValue(token, item.id, ["reach", "accounts_reached"]);
-  const holdRate3s = isImageOnly
+  const skipRateMetric = isImageOnly
+    ? null
+    : await fetchFirstInstagramInsightValue(token, item.id, [
+        "this_reel_skip_rate",
+        "skip_rate",
+        "reel_skip_rate",
+        "ig_reels_skip_rate",
+      ]);
+
+  const holdRateFallback = isImageOnly
     ? null
     : await fetchFirstInstagramInsightValue(token, item.id, [
         "three_second_hold_rate",
@@ -373,48 +391,43 @@ async function getInstagramMetrics(token, item) {
         "ig_reels_hold_rate_3s",
       ]);
 
-  const avgWatchMetric = isImageOnly
+  const averageWatchMetric = isImageOnly
     ? null
     : await fetchFirstInstagramInsightValue(token, item.id, [
-        "ig_reels_avg_watch_time",
         "average_watch_time",
+        "ig_reels_avg_watch_time",
         "avg_watch_time",
       ]);
-  let avgWatchTime = toOptionalMetricNumber(avgWatchMetric);
-
-  let rewatches = isImageOnly
-    ? null
-    : await fetchFirstInstagramInsightValue(token, item.id, ["rewatches", "replays", "ig_reels_replays"]);
+  let averageWatchTime = toOptionalMetricNumber(averageWatchMetric);
+  let thisReelSkipRate = toOptionalMetricNumber(skipRateMetric);
 
   // Fallback for tokens that expose views only through insights endpoints.
   if (views === 0 && !isImageOnly) {
     views = await fetchInstagramViewsFromInsights(token, item.id);
   }
 
-  // If avg watch time metric isn't directly available, try deriving from total watch time.
-  if (!isImageOnly && avgWatchTime === null) {
+  // If average watch time metric isn't directly available, try deriving from total watch time.
+  if (!isImageOnly && averageWatchTime === null) {
     const totalWatchTime = await fetchFirstInstagramInsightValue(token, item.id, ["watch_time", "video_view_time"]);
     if (totalWatchTime !== null && views > 0) {
-      avgWatchTime = Number((totalWatchTime / views).toFixed(2));
+      averageWatchTime = Number((totalWatchTime / views).toFixed(2));
     }
   }
 
-  if (!isImageOnly && rewatches === null) {
-    const allPlays = await fetchFirstInstagramInsightValue(token, item.id, ["ig_reels_aggregated_all_plays_count", "all_plays"]);
-    const baselinePlays = views > 0 ? views : await fetchFirstInstagramInsightValue(token, item.id, ["plays", "video_views"]);
-    if (allPlays !== null && baselinePlays !== null) {
-      rewatches = Math.max(0, Math.round(allPlays - baselinePlays));
-    }
+  // Derive skip rate from hold rate if direct skip metric is unavailable.
+  if (!isImageOnly && thisReelSkipRate === null && holdRateFallback !== null) {
+    thisReelSkipRate = normalizePercentValue(100 - holdRateFallback);
   }
+
+  thisReelSkipRate = thisReelSkipRate === null ? null : normalizePercentValue(thisReelSkipRate);
 
   return {
     views,
     likes,
     comments,
     saves,
-    avg_watch_time: avgWatchTime,
-    hold_rate_3s: toOptionalMetricNumber(holdRate3s),
-    rewatches: toOptionalMetricNumber(rewatches),
+    average_watch_time: averageWatchTime,
+    this_reel_skip_rate: thisReelSkipRate,
     accounts_reached: toOptionalMetricNumber(accountsReached),
   };
 }
@@ -536,10 +549,14 @@ async function render() {
           ? ""
           : `
           <p class="metrics-group-title full">Paste from Instagram Insights</p>
-          ${insightMetricInput("avg_watch_time", "Avg watch time (sec)", reel.avg_watch_time, "e.g. 7.8 or 7.8s")}
-          ${insightMetricInput("hold_rate_3s", "3s hold rate (%)", reel.hold_rate_3s, "e.g. 42 or 42%")}
-          ${insightMetricInput("rewatches", "Rewatches", reel.rewatches, "e.g. 65")}
-          ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "Optional autofill")}
+          ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "e.g. 12000")}
+          ${insightMetricInput("this_reel_skip_rate", "This reel skip rate (%)", reel.this_reel_skip_rate, "e.g. 38 or 38%")}
+          ${insightMetricInput(
+            "average_watch_time",
+            "Average watch time (s)",
+            reel.average_watch_time ?? reel.avg_watch_time,
+            "e.g. 7.8 or 7.8s",
+          )}
         `;
       return `
       <article class="card" data-id="${reel.id}" data-path="${escapeHtml(reel.storage_path || "")}" data-platform="${escapeHtml(reel.platform || "")}" data-kind="${escapeHtml(reelKind)}">
@@ -719,9 +736,8 @@ uploadForm.addEventListener("submit", async (event) => {
       likes: 0,
       comments: 0,
       saves: 0,
-      avg_watch_time: null,
-      hold_rate_3s: null,
-      rewatches: null,
+      average_watch_time: null,
+      this_reel_skip_rate: null,
       accounts_reached: null,
     };
 
@@ -848,9 +864,8 @@ instagramSyncBtn?.addEventListener("click", async () => {
         item.likes > 0 ||
         item.comments > 0 ||
         item.saves > 0 ||
-        item.avg_watch_time !== null ||
-        item.hold_rate_3s !== null ||
-        item.rewatches !== null ||
+        item.average_watch_time !== null ||
+        item.this_reel_skip_rate !== null ||
         item.accounts_reached !== null;
       if (hasMetrics) rowsWithImportedMetrics += 1;
 
@@ -860,9 +875,8 @@ instagramSyncBtn?.addEventListener("click", async () => {
         const currentLikes = Number(existingRow.likes) || 0;
         const currentComments = Number(existingRow.comments) || 0;
         const currentSaves = Number(existingRow.saves) || 0;
-        const currentAvgWatch = parsePastedMetric(existingRow.avg_watch_time);
-        const currentHoldRate = parsePastedMetric(existingRow.hold_rate_3s, { percent: true });
-        const currentRewatches = parsePastedMetric(existingRow.rewatches);
+        const currentAverageWatch = parsePastedMetric(existingRow.average_watch_time ?? existingRow.avg_watch_time);
+        const currentSkipRate = parsePastedMetric(existingRow.this_reel_skip_rate, { percent: true });
         const currentAccountsReached = parsePastedMetric(existingRow.accounts_reached);
         updateRows.push({
           id: existingRow.id,
@@ -870,9 +884,8 @@ instagramSyncBtn?.addEventListener("click", async () => {
           likes: Math.max(currentLikes, item.likes),
           comments: Math.max(currentComments, item.comments),
           saves: Math.max(currentSaves, item.saves),
-          avg_watch_time: item.avg_watch_time ?? currentAvgWatch,
-          hold_rate_3s: item.hold_rate_3s ?? currentHoldRate,
-          rewatches: item.rewatches ?? currentRewatches,
+          average_watch_time: item.average_watch_time ?? currentAverageWatch,
+          this_reel_skip_rate: item.this_reel_skip_rate ?? currentSkipRate,
           accounts_reached: item.accounts_reached ?? currentAccountsReached,
         });
         return;
@@ -889,9 +902,8 @@ instagramSyncBtn?.addEventListener("click", async () => {
         likes: item.likes,
         comments: item.comments,
         saves: item.saves,
-        avg_watch_time: item.avg_watch_time,
-        hold_rate_3s: item.hold_rate_3s,
-        rewatches: item.rewatches,
+        average_watch_time: item.average_watch_time,
+        this_reel_skip_rate: item.this_reel_skip_rate,
         accounts_reached: item.accounts_reached,
       });
     });
@@ -915,8 +927,8 @@ instagramSyncBtn?.addEventListener("click", async () => {
 
     const metricsNote =
       rowsWithImportedMetrics > 0
-        ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Fill missing watch metrics manually where needed.`
-        : "Token did not expose analytics metrics; paste Avg watch time, 3s hold rate, and Rewatches manually.";
+        ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Fill missing skip/watch/reach values manually where needed.`
+        : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
     setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}`);
     await render();
   } catch (error) {
@@ -979,17 +991,16 @@ listEl.addEventListener("click", async (event) => {
     const fd = new FormData(formEl);
     const platformName = String(card.dataset.platform || "").toLowerCase();
     const reelKind = String(card.dataset.kind || "").toLowerCase();
-    const avgWatchTime = parsePastedMetric(fd.get("avg_watch_time"));
-    const holdRate3s = parsePastedMetric(fd.get("hold_rate_3s"), { percent: true });
-    const rewatches = parsePastedMetric(fd.get("rewatches"));
+    const averageWatchTime = parsePastedMetric(fd.get("average_watch_time"));
+    const thisReelSkipRate = parsePastedMetric(fd.get("this_reel_skip_rate"), { percent: true });
     const accountsReached = parsePastedMetric(fd.get("accounts_reached"));
 
     if (
       platformName.includes("instagram") &&
       reelKind !== "static" &&
-      [avgWatchTime, holdRate3s, rewatches].some((value) => value === null)
+      [accountsReached, thisReelSkipRate, averageWatchTime].some((value) => value === null)
     ) {
-      alert("Paste Instagram Insights values for Avg watch time, 3s hold rate, and Rewatches before saving.");
+      alert("Paste Instagram Insights values for Accounts reached, This reel skip rate, and Average watch time before saving.");
       return;
     }
 
@@ -998,9 +1009,8 @@ listEl.addEventListener("click", async (event) => {
       likes: Math.round(parsePastedMetric(fd.get("likes")) ?? 0),
       comments: Math.round(parsePastedMetric(fd.get("comments")) ?? 0),
       saves: Math.round(parsePastedMetric(fd.get("saves")) ?? 0),
-      avg_watch_time: avgWatchTime,
-      hold_rate_3s: holdRate3s,
-      rewatches: rewatches === null ? null : Math.round(rewatches),
+      average_watch_time: averageWatchTime,
+      this_reel_skip_rate: thisReelSkipRate,
       accounts_reached: accountsReached === null ? null : Math.round(accountsReached),
     };
 

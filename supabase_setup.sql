@@ -11,9 +11,8 @@ create table if not exists public.reels (
   likes integer not null default 0,
   comments integer not null default 0,
   saves integer not null default 0,
-  avg_watch_time numeric,
-  hold_rate_3s numeric,
-  rewatches integer,
+  average_watch_time numeric,
+  this_reel_skip_rate numeric,
   accounts_reached integer
 );
 
@@ -27,9 +26,8 @@ alter table public.reels
   add column if not exists likes integer not null default 0,
   add column if not exists comments integer not null default 0,
   add column if not exists saves integer not null default 0,
-  add column if not exists avg_watch_time numeric,
-  add column if not exists hold_rate_3s numeric,
-  add column if not exists rewatches integer,
+  add column if not exists average_watch_time numeric,
+  add column if not exists this_reel_skip_rate numeric,
   add column if not exists accounts_reached integer;
 
 do $$
@@ -42,6 +40,26 @@ begin
     update public.reels
     set title = coalesce(title, name)
     where title is null;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'reels' and column_name = 'avg_watch_time'
+  ) then
+    update public.reels
+    set average_watch_time = coalesce(average_watch_time, avg_watch_time)
+    where average_watch_time is null;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'reels' and column_name = 'hold_rate_3s'
+  ) then
+    update public.reels
+    set this_reel_skip_rate = coalesce(this_reel_skip_rate, greatest(0, least(100, 100 - hold_rate_3s)))
+    where this_reel_skip_rate is null and hold_rate_3s is not null;
   end if;
 end $$;
 

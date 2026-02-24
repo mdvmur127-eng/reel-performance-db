@@ -4,8 +4,9 @@ const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REELS_BUCKET = "reels";
-const INSTAGRAM_CLIENT_ID = ""; // Set your Meta app client id to enable OAuth connect.
+const INSTAGRAM_CLIENT_ID = ""; // Optional default if you want to hardcode App ID.
 const IG_TOKEN_STORAGE_KEY = "instagram_user_access_token";
+const IG_APP_ID_STORAGE_KEY = "instagram_app_id";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -15,6 +16,7 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
+const instagramAppIdEl = document.getElementById("instagram-app-id");
 const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
@@ -99,6 +101,22 @@ function saveInstagramToken(token) {
   if (instagramTokenEl) instagramTokenEl.value = token;
 }
 
+function saveInstagramAppId(appId) {
+  const value = String(appId || "").trim();
+  if (value) {
+    localStorage.setItem(IG_APP_ID_STORAGE_KEY, value);
+  } else {
+    localStorage.removeItem(IG_APP_ID_STORAGE_KEY);
+  }
+  if (instagramAppIdEl && instagramAppIdEl.value !== value) {
+    instagramAppIdEl.value = value;
+  }
+}
+
+function getInstagramAppId() {
+  return String(instagramAppIdEl?.value || localStorage.getItem(IG_APP_ID_STORAGE_KEY) || INSTAGRAM_CLIENT_ID || "").trim();
+}
+
 function getInstagramToken() {
   return String(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "").trim();
 }
@@ -106,6 +124,13 @@ function getInstagramToken() {
 function clearInstagramToken() {
   localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
   if (instagramTokenEl) instagramTokenEl.value = "";
+}
+
+function refreshInstagramConnectState() {
+  if (!connectInstagramBtn) return;
+  const hasAppId = Boolean(getInstagramAppId());
+  connectInstagramBtn.disabled = false;
+  connectInstagramBtn.textContent = hasAppId ? "Connect Instagram" : "Connect Instagram (App ID Needed)";
 }
 
 function inferKindFromUrl(url) {
@@ -435,6 +460,14 @@ refreshRankingBtn.addEventListener("click", async () => {
 });
 
 function handleInstagramOAuthReturn() {
+  const queryParams = new URLSearchParams(window.location.search);
+  if (queryParams.get("error")) {
+    const message = queryParams.get("error_description") || "Instagram authorization was cancelled.";
+    setSyncStatus(`Instagram connect failed: ${message}`, true);
+    history.replaceState({}, "", window.location.pathname);
+    return;
+  }
+
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
   if (!hash.includes("access_token=")) return;
   const params = new URLSearchParams(hash);
@@ -447,13 +480,17 @@ function handleInstagramOAuthReturn() {
 }
 
 connectInstagramBtn?.addEventListener("click", () => {
-  if (!INSTAGRAM_CLIENT_ID) {
-    setSyncStatus("Set INSTAGRAM_CLIENT_ID in main.js to enable OAuth connect.", true);
+  const appId = getInstagramAppId();
+  if (!appId) {
+    setSyncStatus("OAuth is not configured yet. Paste Instagram App ID above, or use token mode and click Sync Posts.");
+    instagramAppIdEl?.focus();
     return;
   }
+
+  saveInstagramAppId(appId);
   const redirectUri = `${window.location.origin}/app.html`;
-  const authUrl = new URL("https://www.instagram.com/oauth/authorize");
-  authUrl.searchParams.set("client_id", INSTAGRAM_CLIENT_ID);
+  const authUrl = new URL("https://api.instagram.com/oauth/authorize");
+  authUrl.searchParams.set("client_id", appId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "token");
   authUrl.searchParams.set("scope", "user_profile,user_media");
@@ -475,6 +512,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
   const limit = Math.max(1, Math.min(50, Number(instagramLimitEl?.value || 12)));
   if (!token) {
     setSyncStatus("Paste your Instagram access token first.", true);
+    instagramTokenEl?.focus();
     return;
   }
 
@@ -533,6 +571,21 @@ instagramSyncBtn?.addEventListener("click", async () => {
   } finally {
     instagramSyncBtn.disabled = false;
   }
+});
+
+instagramAppIdEl?.addEventListener("input", () => {
+  const value = String(instagramAppIdEl.value || "").trim();
+  saveInstagramAppId(value);
+  refreshInstagramConnectState();
+});
+
+instagramTokenEl?.addEventListener("input", () => {
+  const token = String(instagramTokenEl.value || "").trim();
+  if (!token) {
+    localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(IG_TOKEN_STORAGE_KEY, token);
 });
 
 chipButtons.forEach((button) => {
@@ -624,9 +677,21 @@ logoutBtn.addEventListener("click", async () => {
 async function init() {
   clearLegacyOverlays();
   handleInstagramOAuthReturn();
+  const storedAppId = localStorage.getItem(IG_APP_ID_STORAGE_KEY) || INSTAGRAM_CLIENT_ID;
+  if (storedAppId) {
+    saveInstagramAppId(storedAppId);
+  }
   const storedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
   if (storedToken && instagramTokenEl && !instagramTokenEl.value) {
     instagramTokenEl.value = storedToken;
+  }
+  refreshInstagramConnectState();
+  if (storedToken) {
+    setSyncStatus("Instagram token ready. Click Sync Posts to import.");
+  } else if (storedAppId) {
+    setSyncStatus("Instagram App ID saved. Click Connect Instagram to authorize.");
+  } else {
+    setSyncStatus("Use token mode or add Instagram App ID for one-click OAuth connect.");
   }
   const user = await getUser().catch(() => null);
   if (!user) {

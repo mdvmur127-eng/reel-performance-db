@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260222a" />
+    <link rel="stylesheet" href="/styles.css?v=20260224b" />
   </head>
   <body>
     <main class="app">
@@ -36,6 +36,15 @@
           </div>
           <div class="grid">
             <label class="full">
+              Instagram App ID (for one-click OAuth connect)
+              <input
+                id="instagram-app-id"
+                name="instagram_app_id"
+                placeholder="Paste Meta Instagram App ID (optional)"
+                inputmode="numeric"
+              />
+            </label>
+            <label class="full">
               Instagram User Access Token
               <input
                 id="instagram-token"
@@ -49,6 +58,9 @@
               <input id="instagram-limit" name="instagram_limit" type="number" min="1" max="50" value="12" />
             </label>
           </div>
+          <p class="meta">
+            If App ID is empty, use token mode: paste a valid Instagram user access token and click Sync Posts.
+          </p>
           <p id="instagram-sync-status" class="meta"></p>
         </section>
 
@@ -132,6 +144,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260222a"></script>
+    <script type="module" src="/main.js?v=20260224b"></script>
   </body>
 </html>

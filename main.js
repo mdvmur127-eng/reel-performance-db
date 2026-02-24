@@ -200,6 +200,52 @@ async function fetchInstagramMedia(token, limit = 12) {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+function extractMissingColumnName(message) {
+  const value = String(message || "");
+  const match = value.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] || "";
+}
+
+function dropColumnFromRows(rows, columnName) {
+  if (!columnName) return rows;
+  return rows.map((row) => {
+    const clone = { ...row };
+    delete clone[columnName];
+    return clone;
+  });
+}
+
+async function insertReelsWithFallback(rows, timeoutMessage = "Saving reel record timed out.") {
+  let payloadRows = rows.map((row) => ({ ...row }));
+  const tried = new Set();
+
+  while (true) {
+    const { error } = await withTimeout(
+      supabase.from(REELS_TABLE).insert(payloadRows),
+      REQUEST_TIMEOUT_MS,
+      timeoutMessage,
+    );
+    if (!error) return;
+
+    const message = String(error.message || "");
+    const missingColumn = extractMissingColumnName(message);
+
+    if (missingColumn && !tried.has(missingColumn)) {
+      tried.add(missingColumn);
+      payloadRows = dropColumnFromRows(payloadRows, missingColumn);
+      continue;
+    }
+
+    if (message.toLowerCase().includes("video_url") && !tried.has("video_url")) {
+      tried.add("video_url");
+      payloadRows = dropColumnFromRows(payloadRows, "video_url");
+      continue;
+    }
+
+    throw error;
+  }
+}
+
 async function render() {
   if (!currentUser) return;
 
@@ -421,22 +467,7 @@ uploadForm.addEventListener("submit", async (event) => {
       saves: 0,
     };
 
-    let { error: insertError } = await withTimeout(
-      supabase.from(REELS_TABLE).insert({ ...baseRow, video_url: videoUrl }),
-      REQUEST_TIMEOUT_MS,
-      "Saving reel record timed out.",
-    );
-
-    if (insertError && String(insertError.message || "").toLowerCase().includes("video_url")) {
-      const fallback = await withTimeout(
-        supabase.from(REELS_TABLE).insert(baseRow),
-        REQUEST_TIMEOUT_MS,
-        "Saving reel record timed out.",
-      );
-      insertError = fallback.error;
-    }
-
-    if (insertError) throw insertError;
+    await insertReelsWithFallback([{ ...baseRow, video_url: videoUrl }], "Saving reel record timed out.");
 
     saved = true;
     uploadForm.reset();
@@ -555,13 +586,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
       return;
     }
 
-    let { error } = await supabase.from(REELS_TABLE).insert(rows);
-    if (error && String(error.message || "").toLowerCase().includes("video_url")) {
-      const fallbackRows = rows.map(({ video_url, ...rest }) => rest);
-      const fallback = await supabase.from(REELS_TABLE).insert(fallbackRows);
-      error = fallback.error;
-    }
-    if (error) throw error;
+    await insertReelsWithFallback(rows, "Instagram sync insert timed out.");
 
     setSyncStatus(`Imported ${rows.length} new Instagram post(s).`);
     await render();

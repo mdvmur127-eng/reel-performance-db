@@ -30,6 +30,9 @@ alter table public.reels
   add column if not exists this_reel_skip_rate numeric,
   add column if not exists accounts_reached integer;
 
+alter table public.reels
+  drop column if exists hold_rate_3s;
+
 do $$
 begin
   if exists (
@@ -52,15 +55,6 @@ begin
     where average_watch_time is null;
   end if;
 
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public' and table_name = 'reels' and column_name = 'hold_rate_3s'
-  ) then
-    update public.reels
-    set this_reel_skip_rate = coalesce(this_reel_skip_rate, greatest(0, least(100, 100 - hold_rate_3s)))
-    where this_reel_skip_rate is null and hold_rate_3s is not null;
-  end if;
 end $$;
 
 alter table public.reels enable row level security;

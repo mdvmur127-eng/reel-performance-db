@@ -74,19 +74,16 @@ function parsePastedMetric(value, { percent = false } = {}) {
 function skipRateFromReel(reel) {
   const direct = parsePastedMetric(reel.this_reel_skip_rate, { percent: true });
   if (direct !== null) return direct;
-  const holdFallback = parsePastedMetric(reel.hold_rate_3s, { percent: true });
-  if (holdFallback === null) return null;
-  return normalizePercentValue(100 - holdFallback);
+  const fallback = parsePastedMetric(reel.skip_rate, { percent: true });
+  return fallback === null ? null : normalizePercentValue(fallback);
 }
 
 function buildWatchMetricFields(averageWatchTime, thisReelSkipRate) {
   const safeSkip = thisReelSkipRate === null ? null : normalizePercentValue(thisReelSkipRate);
-  const legacyHoldRate = safeSkip === null ? null : normalizePercentValue(100 - safeSkip);
   return {
     average_watch_time: averageWatchTime,
     this_reel_skip_rate: safeSkip,
     avg_watch_time: averageWatchTime,
-    hold_rate_3s: legacyHoldRate,
   };
 }
 
@@ -97,11 +94,8 @@ function score(reel) {
   const saves = toNumber(reel.saves, 0);
   const reelKind = getReelKind(reel);
   const avgWatchTime = toNumber(reel.average_watch_time ?? reel.avg_watch_time, 0);
-  let skipRate = toNumber(reel.this_reel_skip_rate ?? reel.skip_rate, Number.NaN);
-  if (!Number.isFinite(skipRate)) {
-    const holdRateFallback = toNumber(reel.hold_rate_3s, Number.NaN);
-    skipRate = Number.isFinite(holdRateFallback) ? 100 - holdRateFallback : 100;
-  }
+  const skipSource = reel.this_reel_skip_rate ?? reel.skip_rate;
+  let skipRate = toNumber(skipSource, Number.NaN);
   skipRate = normalizePercentValue(skipRate) ?? 100;
   const accountsReached = Math.max(toNumber(reel.accounts_reached, 0), views);
 
@@ -401,15 +395,6 @@ async function getInstagramMetrics(token, item) {
         "ig_reels_skip_rate",
       ]);
 
-  const holdRateFallback = isImageOnly
-    ? null
-    : await fetchFirstInstagramInsightValue(token, item.id, [
-        "three_second_hold_rate",
-        "hold_rate_3s",
-        "reel_hold_rate_3s",
-        "ig_reels_hold_rate_3s",
-      ]);
-
   const averageWatchMetric = isImageOnly
     ? null
     : await fetchFirstInstagramInsightValue(token, item.id, [
@@ -431,11 +416,6 @@ async function getInstagramMetrics(token, item) {
     if (totalWatchTime !== null && views > 0) {
       averageWatchTime = Number((totalWatchTime / views).toFixed(2));
     }
-  }
-
-  // Derive skip rate from hold rate if direct skip metric is unavailable.
-  if (!isImageOnly && thisReelSkipRate === null && holdRateFallback !== null) {
-    thisReelSkipRate = normalizePercentValue(100 - holdRateFallback);
   }
 
   thisReelSkipRate = thisReelSkipRate === null ? null : normalizePercentValue(thisReelSkipRate);
@@ -500,6 +480,7 @@ async function insertReelsWithFallback(rows, timeoutMessage = "Saving reel recor
 async function updateReelWithFallback(id, userId, payload, timeoutMessage = "Updating reel timed out.") {
   let updatePayload = { ...payload };
   const tried = new Set();
+  const droppedColumns = [];
 
   while (true) {
     const { error } = await withTimeout(
@@ -507,11 +488,12 @@ async function updateReelWithFallback(id, userId, payload, timeoutMessage = "Upd
       REQUEST_TIMEOUT_MS,
       timeoutMessage,
     );
-    if (!error) return;
+    if (!error) return { droppedColumns };
 
     const missingColumn = extractMissingColumnName(error.message);
     if (missingColumn && !tried.has(missingColumn)) {
       tried.add(missingColumn);
+      droppedColumns.push(missingColumn);
       delete updatePayload[missingColumn];
       continue;
     }
@@ -935,11 +917,32 @@ instagramSyncBtn?.addEventListener("click", async () => {
     }
 
     if (updateRows.length) {
-      await Promise.all(
+      const updateResults = await Promise.all(
         updateRows.map(({ id, ...payload }) =>
           updateReelWithFallback(id, currentUser.id, payload, "Instagram metrics update timed out."),
         ),
       );
+
+      const dropped = new Set(updateResults.flatMap((result) => result?.droppedColumns || []));
+      const missingAverageWatch = dropped.has("average_watch_time") && dropped.has("avg_watch_time");
+      const missingSkipRate = dropped.has("this_reel_skip_rate");
+      const missingReach = dropped.has("accounts_reached");
+      let missingSchemaColumnsMessage = "";
+      if (missingAverageWatch || missingSkipRate || missingReach) {
+        const missingFields = [];
+        if (missingAverageWatch) missingFields.push("average_watch_time");
+        if (missingSkipRate) missingFields.push("this_reel_skip_rate");
+        if (missingReach) missingFields.push("accounts_reached");
+        missingSchemaColumnsMessage = ` Missing Supabase columns: ${missingFields.join(", ")}. Run SQL migration, then sync again.`;
+      }
+
+      const metricsNote =
+        rowsWithImportedMetrics > 0
+          ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Fill missing skip/watch/reach values manually where needed.`
+          : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
+      setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}${missingSchemaColumnsMessage}`, Boolean(missingSchemaColumnsMessage));
+      await render();
+      return;
     }
 
     const metricsNote =
@@ -1031,7 +1034,22 @@ listEl.addEventListener("click", async (event) => {
     };
 
     try {
-      await updateReelWithFallback(id, currentUser.id, payload, "Saving metrics timed out.");
+      const updateResult = await updateReelWithFallback(id, currentUser.id, payload, "Saving metrics timed out.");
+
+      const dropped = new Set(updateResult?.droppedColumns || []);
+      const missingAverageWatch = dropped.has("average_watch_time") && dropped.has("avg_watch_time");
+      const missingSkipRate = dropped.has("this_reel_skip_rate");
+      const missingReach = dropped.has("accounts_reached");
+      if (missingAverageWatch || missingSkipRate || missingReach) {
+        const missingFields = [];
+        if (missingAverageWatch) missingFields.push("average_watch_time");
+        if (missingSkipRate) missingFields.push("this_reel_skip_rate");
+        if (missingReach) missingFields.push("accounts_reached");
+        alert(
+          `Metrics could not be stored because Supabase is missing columns: ${missingFields.join(", ")}. Run the latest SQL migration and retry.`,
+        );
+      }
+
       await render();
     } catch (error) {
       console.error(error);

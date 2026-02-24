@@ -242,27 +242,53 @@ function getInsightValue(entry) {
   return toMetricNumber(entry.value);
 }
 
+function isPermissionOrSupportError(message) {
+  const value = String(message || "").toLowerCase();
+  return (
+    value.includes("permission") ||
+    value.includes("not authorized") ||
+    value.includes("unsupported") ||
+    value.includes("cannot be queried")
+  );
+}
+
+async function fetchInstagramInsightMetric(token, mediaId, metric) {
+  const endpoints = [
+    `https://graph.instagram.com/${mediaId}/insights`,
+    `https://graph.facebook.com/v21.0/${mediaId}/insights`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const url = new URL(endpoint);
+      url.searchParams.set("metric", metric);
+      url.searchParams.set("access_token", token);
+      const response = await withTimeout(fetch(url.toString()), 8000, "Instagram insights request timed out.");
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        const errorMessage = payload?.error?.message || "";
+        if (isPermissionOrSupportError(errorMessage)) continue;
+        return 0;
+      }
+      const insights = Array.isArray(payload.data) ? payload.data : [];
+      const hit = insights.find((entry) => String(entry.name || "").toLowerCase() === metric.toLowerCase()) || insights[0];
+      return getInsightValue(hit);
+    } catch {
+      // Continue with the next endpoint/metric fallback.
+    }
+  }
+
+  return 0;
+}
+
 async function fetchInstagramViewsFromInsights(token, mediaId) {
   if (!mediaId) return 0;
-  try {
-    const url = new URL(`https://graph.instagram.com/${mediaId}/insights`);
-    url.searchParams.set("metric", "views,plays,video_views,impressions,reach");
-    url.searchParams.set("access_token", token);
-    const response = await withTimeout(fetch(url.toString()), 8000, "Instagram insights request timed out.");
-    const payload = await response.json();
-    if (!response.ok || payload.error) return 0;
-
-    const insights = Array.isArray(payload.data) ? payload.data : [];
-    const preferred = ["views", "plays", "video_views", "impressions", "reach"];
-    for (const metricName of preferred) {
-      const hit = insights.find((entry) => String(entry.name || "").toLowerCase() === metricName);
-      const value = getInsightValue(hit);
-      if (value > 0) return value;
-    }
-    return 0;
-  } catch {
-    return 0;
+  const metrics = ["views", "plays", "video_views", "impressions", "reach"];
+  for (const metric of metrics) {
+    const value = await fetchInstagramInsightMetric(token, mediaId, metric);
+    if (value > 0) return value;
   }
+  return 0;
 }
 
 async function getInstagramMetrics(token, item) {
@@ -693,12 +719,16 @@ instagramSyncBtn?.addEventListener("click", async () => {
 
       const existingRow = existingByUrl.get(item.permalink);
       if (existingRow) {
+        const currentViews = Number(existingRow.views) || 0;
+        const currentLikes = Number(existingRow.likes) || 0;
+        const currentComments = Number(existingRow.comments) || 0;
+        const currentSaves = Number(existingRow.saves) || 0;
         updateRows.push({
           id: existingRow.id,
-          views: item.views,
-          likes: item.likes,
-          comments: item.comments,
-          saves: item.saves,
+          views: Math.max(currentViews, item.views),
+          likes: Math.max(currentLikes, item.likes),
+          comments: Math.max(currentComments, item.comments),
+          saves: Math.max(currentSaves, item.saves),
         });
         return;
       }

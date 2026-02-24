@@ -186,9 +186,9 @@ async function getAllReelsForUser(userId) {
   return data || [];
 }
 
-async function fetchInstagramMedia(token, limit = 12) {
+async function fetchInstagramMediaByFields(token, limit, fields) {
   const url = new URL("https://graph.instagram.com/me/media");
-  url.searchParams.set("fields", "id,caption,media_type,permalink,timestamp");
+  url.searchParams.set("fields", fields);
   url.searchParams.set("limit", String(limit));
   url.searchParams.set("access_token", token);
 
@@ -198,6 +198,86 @@ async function fetchInstagramMedia(token, limit = 12) {
     throw new Error(payload?.error?.message || "Failed to fetch Instagram media.");
   }
   return Array.isArray(payload.data) ? payload.data : [];
+}
+
+function isFieldSelectionError(message) {
+  const value = String(message || "").toLowerCase();
+  return (
+    value.includes("nonexisting field") ||
+    value.includes("cannot be queried") ||
+    (value.includes("field") && value.includes("not exist"))
+  );
+}
+
+async function fetchInstagramMedia(token, limit = 12) {
+  const fieldSets = [
+    "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,video_view_count",
+    "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
+    "id,caption,media_type,media_product_type,permalink,timestamp",
+  ];
+
+  let lastError = null;
+  for (const fields of fieldSets) {
+    try {
+      return await fetchInstagramMediaByFields(token, limit, fields);
+    } catch (error) {
+      lastError = error;
+      if (!isFieldSelectionError(error?.message)) break;
+    }
+  }
+
+  throw lastError || new Error("Failed to fetch Instagram media.");
+}
+
+function toMetricNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function getInsightValue(entry) {
+  if (!entry) return 0;
+  if (Array.isArray(entry.values) && entry.values.length) {
+    return toMetricNumber(entry.values[0]?.value);
+  }
+  return toMetricNumber(entry.value);
+}
+
+async function fetchInstagramViewsFromInsights(token, mediaId) {
+  if (!mediaId) return 0;
+  try {
+    const url = new URL(`https://graph.instagram.com/${mediaId}/insights`);
+    url.searchParams.set("metric", "views,plays,video_views,impressions,reach");
+    url.searchParams.set("access_token", token);
+    const response = await withTimeout(fetch(url.toString()), 8000, "Instagram insights request timed out.");
+    const payload = await response.json();
+    if (!response.ok || payload.error) return 0;
+
+    const insights = Array.isArray(payload.data) ? payload.data : [];
+    const preferred = ["views", "plays", "video_views", "impressions", "reach"];
+    for (const metricName of preferred) {
+      const hit = insights.find((entry) => String(entry.name || "").toLowerCase() === metricName);
+      const value = getInsightValue(hit);
+      if (value > 0) return value;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function getInstagramMetrics(token, item) {
+  const mediaType = String(item.media_type || "").toUpperCase();
+  const likes = toMetricNumber(item.like_count);
+  const comments = toMetricNumber(item.comments_count);
+  const saves = toMetricNumber(item.save_count || item.saves);
+  let views = toMetricNumber(item.video_view_count || item.view_count || item.views || item.play_count || item.plays);
+
+  // Fallback for tokens that expose views only through insights endpoints.
+  if (views === 0 && mediaType !== "IMAGE") {
+    views = await fetchInstagramViewsFromInsights(token, item.id);
+  }
+
+  return { views, likes, comments, saves };
 }
 
 function extractMissingColumnName(message) {
@@ -239,6 +319,29 @@ async function insertReelsWithFallback(rows, timeoutMessage = "Saving reel recor
     if (message.toLowerCase().includes("video_url") && !tried.has("video_url")) {
       tried.add("video_url");
       payloadRows = dropColumnFromRows(payloadRows, "video_url");
+      continue;
+    }
+
+    throw error;
+  }
+}
+
+async function updateReelWithFallback(id, userId, payload, timeoutMessage = "Updating reel timed out.") {
+  let updatePayload = { ...payload };
+  const tried = new Set();
+
+  while (true) {
+    const { error } = await withTimeout(
+      supabase.from(REELS_TABLE).update(updatePayload).eq("id", id).eq("user_id", userId),
+      REQUEST_TIMEOUT_MS,
+      timeoutMessage,
+    );
+    if (!error) return;
+
+    const missingColumn = extractMissingColumnName(error.message);
+    if (missingColumn && !tried.has(missingColumn)) {
+      tried.add(missingColumn);
+      delete updatePayload[missingColumn];
       continue;
     }
 
@@ -557,38 +660,85 @@ instagramSyncBtn?.addEventListener("click", async () => {
     }
 
     const existing = await getAllReelsForUser(currentUser.id);
-    const existingUrls = new Set(
-      existing.map((reel) => String(reel.video_url || reel.storage_path || "").trim()).filter(Boolean),
+    const existingByUrl = new Map(
+      existing
+        .map((reel) => [String(reel.video_url || reel.storage_path || "").trim(), reel])
+        .filter(([url]) => Boolean(url)),
     );
 
-    const rows = media
-      .map((item) => {
+    const prepared = await Promise.all(
+      media.map(async (item) => {
         const permalink = String(item.permalink || "").trim();
-        if (!permalink || existingUrls.has(permalink)) return null;
+        if (!permalink) return null;
+        const metrics = await getInstagramMetrics(token, item);
         const title = String(item.caption || "").split("\n")[0].trim() || `Instagram post ${item.id}`;
+        const reelType = String(item.media_type || "").toLowerCase().includes("image") ? "static" : "video";
         return {
-          user_id: currentUser.id,
+          permalink,
           title: title.slice(0, 120),
-          platform: "Instagram",
-          storage_path: permalink,
-          video_url: permalink,
-          reel_type: String(item.media_type || "").toLowerCase().includes("image") ? "static" : "video",
-          views: 0,
-          likes: 0,
-          comments: 0,
-          saves: 0,
+          reel_type: reelType,
+          ...metrics,
         };
-      })
-      .filter(Boolean);
+      }),
+    );
 
-    if (!rows.length) {
-      setSyncStatus("Everything is already synced.");
+    const newRows = [];
+    const updateRows = [];
+    let rowsWithImportedMetrics = 0;
+
+    prepared.forEach((item) => {
+      if (!item) return;
+      const hasMetrics = item.views > 0 || item.likes > 0 || item.comments > 0 || item.saves > 0;
+      if (hasMetrics) rowsWithImportedMetrics += 1;
+
+      const existingRow = existingByUrl.get(item.permalink);
+      if (existingRow) {
+        updateRows.push({
+          id: existingRow.id,
+          views: item.views,
+          likes: item.likes,
+          comments: item.comments,
+          saves: item.saves,
+        });
+        return;
+      }
+
+      newRows.push({
+        user_id: currentUser.id,
+        title: item.title,
+        platform: "Instagram",
+        storage_path: item.permalink,
+        video_url: item.permalink,
+        reel_type: item.reel_type,
+        views: item.views,
+        likes: item.likes,
+        comments: item.comments,
+        saves: item.saves,
+      });
+    });
+
+    if (!newRows.length && !updateRows.length) {
+      setSyncStatus("No importable Instagram posts found.");
       return;
     }
 
-    await insertReelsWithFallback(rows, "Instagram sync insert timed out.");
+    if (newRows.length) {
+      await insertReelsWithFallback(newRows, "Instagram sync insert timed out.");
+    }
 
-    setSyncStatus(`Imported ${rows.length} new Instagram post(s).`);
+    if (updateRows.length) {
+      await Promise.all(
+        updateRows.map(({ id, ...payload }) =>
+          updateReelWithFallback(id, currentUser.id, payload, "Instagram metrics update timed out."),
+        ),
+      );
+    }
+
+    const metricsNote =
+      rowsWithImportedMetrics > 0
+        ? `${rowsWithImportedMetrics} post(s) included engagement/views metrics.`
+        : "Token did not expose engagement/views metrics for these posts.";
+    setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}`);
     await render();
   } catch (error) {
     console.error(error);

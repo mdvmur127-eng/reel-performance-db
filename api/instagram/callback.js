@@ -65,7 +65,6 @@ module.exports = async function handler(req, res) {
     requireEnv([
       "INSTAGRAM_CLIENT_ID",
       "INSTAGRAM_CLIENT_SECRET",
-      "SUPABASE_URL",
       "SUPABASE_SERVICE_ROLE_KEY",
     ]);
 

@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    requireEnv(["INSTAGRAM_CLIENT_ID", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+    requireEnv(["INSTAGRAM_CLIENT_ID", "SUPABASE_SERVICE_ROLE_KEY"]);
     const user = await requireUser(req);
     const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
     const oauthScopes =

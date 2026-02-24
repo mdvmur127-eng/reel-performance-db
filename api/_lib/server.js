@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const DEFAULT_SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
 const SUPABASE_ANON_KEY =
   process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -97,7 +98,6 @@ function getQueryParam(req, key) {
 }
 
 async function supabaseAuthUser(accessToken) {
-  requireEnv(["SUPABASE_URL"]);
   if (!SUPABASE_ANON_KEY) {
     const error = new Error("Missing required environment variable: SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY).");
     error.statusCode = 500;
@@ -141,7 +141,7 @@ async function requireUser(req) {
 }
 
 async function supabaseRest(table, { method = "GET", query = {}, body, prefer } = {}) {
-  requireEnv(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  requireEnv(["SUPABASE_SERVICE_ROLE_KEY"]);
 
   const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
   Object.entries(query || {}).forEach(([key, value]) => {

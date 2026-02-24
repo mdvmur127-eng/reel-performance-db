@@ -5,6 +5,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABAS
 const SUPABASE_ANON_KEY =
   process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_AUTH_API_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 
 function json(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -98,8 +99,10 @@ function getQueryParam(req, key) {
 }
 
 async function supabaseAuthUser(accessToken) {
-  if (!SUPABASE_ANON_KEY) {
-    const error = new Error("Missing required environment variable: SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY).");
+  if (!SUPABASE_AUTH_API_KEY) {
+    const error = new Error(
+      "Missing required environment variable: SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY) and SUPABASE_SERVICE_ROLE_KEY.",
+    );
     error.statusCode = 500;
     throw error;
   }
@@ -107,7 +110,7 @@ async function supabaseAuthUser(accessToken) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: "GET",
     headers: {
-      apikey: SUPABASE_ANON_KEY,
+      apikey: SUPABASE_AUTH_API_KEY,
       Authorization: `Bearer ${accessToken}`,
     },
   });

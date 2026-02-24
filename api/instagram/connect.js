@@ -16,6 +16,10 @@ module.exports = async function handler(req, res) {
   try {
     requireEnv(["INSTAGRAM_CLIENT_ID", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
     const user = await requireUser(req);
+    const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
+    const oauthScopes =
+      process.env.INSTAGRAM_OAUTH_SCOPES ||
+      "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement";
 
     const state = randomState(20);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -32,11 +36,11 @@ module.exports = async function handler(req, res) {
       throw new Error("Cannot determine OAuth redirect URI. Set INSTAGRAM_REDIRECT_URI in Vercel.");
     }
 
-    const authUrl = new URL("https://api.instagram.com/oauth/authorize");
+    const authUrl = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
     authUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", "user_profile,user_media");
+    authUrl.searchParams.set("scope", oauthScopes);
     authUrl.searchParams.set("state", state);
 
     return json(res, 200, { authUrl: authUrl.toString() });

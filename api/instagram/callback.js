@@ -9,21 +9,14 @@ const {
 } = require("../_lib/server");
 
 async function exchangeCodeForToken({ code, redirectUri }) {
-  const form = new URLSearchParams({
-    client_id: process.env.INSTAGRAM_CLIENT_ID,
-    client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri,
-    code,
-  });
+  const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
+  const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
+  tokenUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
+  tokenUrl.searchParams.set("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
+  tokenUrl.searchParams.set("redirect_uri", redirectUri);
+  tokenUrl.searchParams.set("code", code);
 
-  const response = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: form.toString(),
-  });
+  const response = await fetch(tokenUrl.toString(), { method: "GET" });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.error_type || payload?.error_message || payload?.error) {
@@ -31,15 +24,16 @@ async function exchangeCodeForToken({ code, redirectUri }) {
     throw new Error(errorText);
   }
 
-  const shortToken = payload?.access_token;
-  if (!shortToken) {
+  const shortLivedToken = payload?.access_token;
+  if (!shortLivedToken) {
     throw new Error("Meta did not return an access token.");
   }
 
-  const longLivedUrl = new URL("https://graph.instagram.com/access_token");
-  longLivedUrl.searchParams.set("grant_type", "ig_exchange_token");
+  const longLivedUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
+  longLivedUrl.searchParams.set("grant_type", "fb_exchange_token");
+  longLivedUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
   longLivedUrl.searchParams.set("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
-  longLivedUrl.searchParams.set("access_token", shortToken);
+  longLivedUrl.searchParams.set("fb_exchange_token", shortLivedToken);
 
   try {
     const longResponse = await fetch(longLivedUrl.toString());
@@ -56,7 +50,7 @@ async function exchangeCodeForToken({ code, redirectUri }) {
   }
 
   return {
-    accessToken: shortToken,
+    accessToken: shortLivedToken,
     tokenType: payload.token_type || "bearer",
     expiresIn: Number(payload.expires_in) || null,
   };

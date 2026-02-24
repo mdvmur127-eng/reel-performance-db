@@ -1,4 +1,5 @@
 const REQUEST_TIMEOUT_MS = 15000;
+const GRAPH_VERSION = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
 
 function withTimeout(promise, timeoutMs, message) {
   let timeoutId;
@@ -10,39 +11,15 @@ function withTimeout(promise, timeoutMs, message) {
 
 async function fetchJson(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS, timeoutMessage = "Request timed out.") {
   const response = await withTimeout(fetch(url, init), timeoutMs, timeoutMessage);
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+  const payload = await response.json().catch(() => ({}));
 
   if (!response.ok || payload?.error) {
-    const message = payload?.error?.message || payload?.message || `Request failed (${response.status}).`;
+    const message =
+      payload?.error?.message || payload?.message || payload?.error_description || `Request failed (${response.status}).`;
     throw new Error(message);
   }
 
   return payload;
-}
-
-function isFieldSelectionError(message) {
-  const value = String(message || "").toLowerCase();
-  return (
-    value.includes("nonexisting field") ||
-    value.includes("cannot be queried") ||
-    (value.includes("field") && value.includes("not exist"))
-  );
-}
-
-function isPermissionOrSupportError(message) {
-  const value = String(message || "").toLowerCase();
-  return (
-    value.includes("permission") ||
-    value.includes("not authorized") ||
-    value.includes("unsupported") ||
-    value.includes("cannot be queried") ||
-    value.includes("invalid metric")
-  );
 }
 
 function canonicalizeReelUrl(url) {
@@ -84,110 +61,158 @@ function normalizeAverageWatchSeconds(value) {
   return Number(seconds.toFixed(2));
 }
 
-function getInsightValue(entry) {
+function parseInsightValue(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (value && typeof value === "object") {
+    if (typeof value.value === "number") return value.value;
+    if (typeof value.value === "string") {
+      const parsed = Number(value.value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    const firstNumeric = Object.values(value).find((entry) => Number.isFinite(Number(entry)));
+    return firstNumeric === undefined ? 0 : Number(firstNumeric);
+  }
+  return 0;
+}
+
+function getInsightEntryValue(entry) {
   if (!entry) return 0;
   if (Array.isArray(entry.values) && entry.values.length) {
-    return toMetricNumber(entry.values[0]?.value);
+    return parseInsightValue(entry.values[0]?.value);
   }
-  return toMetricNumber(entry.value);
+  return parseInsightValue(entry.value);
 }
 
-async function fetchInstagramMediaByFields(token, limit, fields) {
-  const url = new URL("https://graph.instagram.com/me/media");
-  url.searchParams.set("fields", fields);
-  url.searchParams.set("limit", String(limit));
-  url.searchParams.set("access_token", token);
-
-  const payload = await fetchJson(url.toString(), {}, REQUEST_TIMEOUT_MS, "Instagram request timed out.");
-  return Array.isArray(payload?.data) ? payload.data : [];
+function isRecoverableMetricError(message) {
+  const value = String(message || "").toLowerCase();
+  return (
+    value.includes("does not support") ||
+    value.includes("not available") ||
+    value.includes("invalid metric") ||
+    value.includes("cannot be queried") ||
+    value.includes("permission") ||
+    value.includes("not authorized")
+  );
 }
 
-async function fetchInstagramMedia(token, limit = 12) {
-  const fieldSets = [
-    "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,video_view_count",
+async function resolveInstagramBusinessAccount(userAccessToken) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me/accounts`);
+  url.searchParams.set("fields", "id,name,access_token,instagram_business_account{id,username}");
+  url.searchParams.set("limit", "50");
+  url.searchParams.set("access_token", userAccessToken);
+
+  const payload = await fetchJson(url.toString(), {}, REQUEST_TIMEOUT_MS, "Failed to load Facebook pages.");
+  const pages = Array.isArray(payload?.data) ? payload.data : [];
+  const page = pages.find((entry) => entry?.instagram_business_account?.id);
+
+  if (!page?.instagram_business_account?.id) {
+    throw new Error(
+      "No Instagram Professional account found. Use a Business/Creator IG account linked to a Facebook Page and grant pages_show_list + instagram_basic.",
+    );
+  }
+
+  return {
+    igUserId: page.instagram_business_account.id,
+    igUsername: page.instagram_business_account.username || "",
+    pageId: page.id,
+    pageName: page.name || "",
+    pageAccessToken: page.access_token || userAccessToken,
+  };
+}
+
+async function fetchInstagramMedia(userAccessToken, limit = 12) {
+  const account = await resolveInstagramBusinessAccount(userAccessToken);
+
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${account.igUserId}/media`);
+  url.searchParams.set(
+    "fields",
     "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
-    "id,caption,media_type,media_product_type,permalink,timestamp",
-  ];
+  );
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("access_token", account.pageAccessToken);
 
-  let lastError = null;
-  for (const fields of fieldSets) {
-    try {
-      return await fetchInstagramMediaByFields(token, limit, fields);
-    } catch (error) {
-      lastError = error;
-      if (!isFieldSelectionError(error?.message)) break;
-    }
-  }
+  const payload = await fetchJson(url.toString(), {}, REQUEST_TIMEOUT_MS, "Instagram media request timed out.");
+  const items = Array.isArray(payload?.data) ? payload.data : [];
 
-  throw lastError || new Error("Failed to fetch Instagram media.");
+  return items.map((item) => ({
+    ...item,
+    _access_token: account.pageAccessToken,
+    _ig_user_id: account.igUserId,
+    _ig_username: account.igUsername,
+  }));
 }
 
 async function fetchInstagramInsightMetric(token, mediaId, metric) {
-  const endpoints = [
-    `https://graph.instagram.com/${mediaId}/insights`,
-    `https://graph.facebook.com/v21.0/${mediaId}/insights`,
-  ];
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}/insights`);
+  url.searchParams.set("metric", metric);
+  url.searchParams.set("access_token", token);
 
-  for (const endpoint of endpoints) {
-    try {
-      const url = new URL(endpoint);
-      url.searchParams.set("metric", metric);
-      url.searchParams.set("access_token", token);
-      const payload = await fetchJson(url.toString(), {}, 9000, "Instagram insights request timed out.");
-      const insights = Array.isArray(payload?.data) ? payload.data : [];
-      const hit = insights.find((entry) => String(entry.name || "").toLowerCase() === metric.toLowerCase()) || insights[0];
-      return getInsightValue(hit);
-    } catch (error) {
-      if (!isPermissionOrSupportError(error?.message)) {
-        continue;
-      }
-    }
+  try {
+    const payload = await fetchJson(url.toString(), {}, 9000, "Instagram insights request timed out.");
+    const data = Array.isArray(payload?.data) ? payload.data : [];
+    const hit = data.find((entry) => String(entry.name || "").toLowerCase() === metric.toLowerCase()) || data[0];
+    return toOptionalMetricNumber(getInsightEntryValue(hit));
+  } catch (error) {
+    if (isRecoverableMetricError(error?.message)) return null;
+    return null;
   }
-
-  return 0;
 }
 
 async function fetchFirstInstagramInsightValue(token, mediaId, metricNames) {
   for (const metric of metricNames) {
     const value = await fetchInstagramInsightMetric(token, mediaId, metric);
-    if (value > 0) return value;
+    if (value !== null && value > 0) return value;
   }
   return null;
 }
 
-async function fetchInstagramViewsFromInsights(token, mediaId) {
-  const metrics = ["views", "plays", "video_views", "impressions", "reach"];
-  for (const metric of metrics) {
-    const value = await fetchInstagramInsightMetric(token, mediaId, metric);
-    if (value > 0) return value;
-  }
-  return 0;
-}
-
-async function getInstagramMetrics(token, item) {
-  const mediaType = String(item.media_type || "").toUpperCase();
+async function getInstagramMetrics(userAccessToken, item) {
+  const token = item?._access_token || userAccessToken;
+  const mediaType = String(item?.media_type || "").toUpperCase();
   const isImageOnly = mediaType === "IMAGE";
 
-  const likes = toMetricNumber(item.like_count);
-  const comments = toMetricNumber(item.comments_count);
-  const saves = toMetricNumber(item.save_count || item.saves);
+  let views = 0;
+  let likes = toMetricNumber(item?.like_count);
+  let comments = toMetricNumber(item?.comments_count);
+  let saves = 0;
 
-  let views = toMetricNumber(item.video_view_count || item.view_count || item.views || item.play_count || item.plays);
-  if (views === 0 && !isImageOnly) {
-    views = await fetchInstagramViewsFromInsights(token, item.id);
-  }
+  const accountsReached = await fetchFirstInstagramInsightValue(token, item.id, [
+    "reach",
+    "accounts_reached",
+    "impressions",
+  ]);
 
-  const accountsReached = await fetchFirstInstagramInsightValue(token, item.id, ["reach", "accounts_reached"]);
+  const likesFromInsights = await fetchFirstInstagramInsightValue(token, item.id, ["likes"]);
+  const commentsFromInsights = await fetchFirstInstagramInsightValue(token, item.id, ["comments"]);
+  const savesFromInsights = await fetchFirstInstagramInsightValue(token, item.id, ["saved", "saves"]);
+  const viewsFromInsights = await fetchFirstInstagramInsightValue(token, item.id, [
+    "views",
+    "plays",
+    "video_views",
+    "impressions",
+    "reach",
+  ]);
+
+  if (likesFromInsights !== null) likes = Math.max(likes, toMetricNumber(likesFromInsights));
+  if (commentsFromInsights !== null) comments = Math.max(comments, toMetricNumber(commentsFromInsights));
+  if (savesFromInsights !== null) saves = toMetricNumber(savesFromInsights);
+  if (viewsFromInsights !== null) views = toMetricNumber(viewsFromInsights);
 
   let thisReelSkipRate = null;
   let averageWatchTime = null;
+
   if (!isImageOnly) {
     const skipRateMetric = await fetchFirstInstagramInsightValue(token, item.id, [
       "this_reel_skip_rate",
+      "ig_reels_skip_rate",
       "skip_rate",
       "reel_skip_rate",
-      "ig_reels_skip_rate",
     ]);
+
     const averageWatchMetric = await fetchFirstInstagramInsightValue(token, item.id, [
       "average_watch_time",
       "ig_reels_avg_watch_time",
@@ -198,7 +223,11 @@ async function getInstagramMetrics(token, item) {
     averageWatchTime = normalizeAverageWatchSeconds(averageWatchMetric);
 
     if (averageWatchTime === null) {
-      const totalWatchTime = await fetchFirstInstagramInsightValue(token, item.id, ["watch_time", "video_view_time"]);
+      const totalWatchTime = await fetchFirstInstagramInsightValue(token, item.id, [
+        "watch_time",
+        "video_view_time",
+        "ig_reels_video_view_total_time",
+      ]);
       if (totalWatchTime !== null && views > 0) {
         averageWatchTime = normalizeAverageWatchSeconds(totalWatchTime / views);
       }
@@ -217,8 +246,13 @@ async function getInstagramMetrics(token, item) {
 }
 
 function reelTypeFromMedia(item) {
-  const mediaType = String(item.media_type || "").toUpperCase();
-  return mediaType.includes("IMAGE") ? "static" : "video";
+  const mediaType = String(item?.media_type || "").toUpperCase();
+  const permalink = String(item?.permalink || "").toLowerCase();
+  if (mediaType === "IMAGE") return "static";
+  if (mediaType === "CAROUSEL_ALBUM") {
+    return permalink.includes("/reel/") ? "video" : "static";
+  }
+  return "video";
 }
 
 module.exports = {

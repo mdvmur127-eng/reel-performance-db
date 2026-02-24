@@ -4,9 +4,7 @@ const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REELS_BUCKET = "reels";
-const INSTAGRAM_CLIENT_ID = ""; // Optional default if you want to hardcode App ID.
-const IG_TOKEN_STORAGE_KEY = "instagram_user_access_token";
-const IG_APP_ID_STORAGE_KEY = "instagram_app_id";
+const INSTAGRAM_API_BASE = "/api/instagram";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -16,8 +14,6 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
-const instagramAppIdEl = document.getElementById("instagram-app-id");
-const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
 const connectInstagramBtn = document.getElementById("connect-instagram-btn");
@@ -194,41 +190,49 @@ function setSyncStatus(message, isError = false) {
   instagramSyncStatusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
 }
 
-function saveInstagramToken(token) {
-  localStorage.setItem(IG_TOKEN_STORAGE_KEY, token);
-  if (instagramTokenEl) instagramTokenEl.value = token;
+function setInstagramButtonsDisabled(isDisabled) {
+  if (connectInstagramBtn) connectInstagramBtn.disabled = isDisabled;
+  if (instagramSyncBtn) instagramSyncBtn.disabled = isDisabled;
+  if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = isDisabled;
 }
 
-function saveInstagramAppId(appId) {
-  const value = String(appId || "").trim();
-  if (value) {
-    localStorage.setItem(IG_APP_ID_STORAGE_KEY, value);
-  } else {
-    localStorage.removeItem(IG_APP_ID_STORAGE_KEY);
+async function getAccessToken() {
+  const { data, error } = await withTimeout(supabase.auth.getSession(), REQUEST_TIMEOUT_MS, "Session check timed out.");
+  if (error) throw error;
+  const accessToken = data?.session?.access_token || "";
+  if (!accessToken) {
+    throw new Error("No active session found. Please log in again.");
   }
-  if (instagramAppIdEl && instagramAppIdEl.value !== value) {
-    instagramAppIdEl.value = value;
+  return accessToken;
+}
+
+async function callInstagramApi(path, { method = "GET", body } = {}) {
+  const accessToken = await getAccessToken();
+  const response = await withTimeout(
+    fetch(`${INSTAGRAM_API_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Instagram API request timed out.",
+  );
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
   }
-}
 
-function getInstagramAppId() {
-  return String(instagramAppIdEl?.value || localStorage.getItem(IG_APP_ID_STORAGE_KEY) || INSTAGRAM_CLIENT_ID || "").trim();
-}
+  if (!response.ok) {
+    throw new Error(payload?.error || "Instagram request failed.");
+  }
 
-function getInstagramToken() {
-  return String(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "").trim();
-}
-
-function clearInstagramToken() {
-  localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
-  if (instagramTokenEl) instagramTokenEl.value = "";
-}
-
-function refreshInstagramConnectState() {
-  if (!connectInstagramBtn) return;
-  const hasAppId = Boolean(getInstagramAppId());
-  connectInstagramBtn.disabled = false;
-  connectInstagramBtn.textContent = hasAppId ? "Connect Instagram" : "Connect Instagram (App ID Needed)";
+  return payload || {};
 }
 
 function inferKindFromUrl(url) {
@@ -857,45 +861,79 @@ refreshRankingBtn.addEventListener("click", async () => {
 
 function handleInstagramOAuthReturn() {
   const queryParams = new URLSearchParams(window.location.search);
-  if (queryParams.get("error")) {
-    const message = queryParams.get("error_description") || "Instagram authorization was cancelled.";
-    setSyncStatus(`Instagram connect failed: ${message}`, true);
-    history.replaceState({}, "", window.location.pathname);
-    return;
-  }
+  const oauthState = queryParams.get("ig_oauth");
+  const oauthMessage = queryParams.get("ig_message");
+  if (!oauthState) return false;
 
-  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
-  if (!hash.includes("access_token=")) return;
-  const params = new URLSearchParams(hash);
-  const token = params.get("access_token");
-  if (token) {
-    saveInstagramToken(token);
-    setSyncStatus("Instagram connected. You can now sync posts.");
+  if (oauthState === "success") {
+    setSyncStatus(oauthMessage || "Instagram connected. You can now sync posts.");
+  } else {
+    setSyncStatus(`Instagram connect failed: ${oauthMessage || "authorization failed."}`, true);
   }
-  history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
+  history.replaceState({}, "", window.location.pathname);
+  return true;
 }
 
-connectInstagramBtn?.addEventListener("click", () => {
-  const appId = getInstagramAppId();
-  if (!appId) {
-    setSyncStatus("OAuth is not configured yet. Paste Instagram App ID above, or use token mode and click Sync Posts.");
-    instagramAppIdEl?.focus();
+async function refreshInstagramConnectionStatus({ preserveStatus = false } = {}) {
+  if (!currentUser) return;
+
+  try {
+    const status = await callInstagramApi("/status");
+    const isConnected = Boolean(status.connected);
+    if (instagramSyncBtn) instagramSyncBtn.disabled = !isConnected;
+    if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = !isConnected;
+    if (connectInstagramBtn) connectInstagramBtn.disabled = false;
+    if (!preserveStatus) {
+      if (isConnected) {
+        setSyncStatus("Instagram is connected. Click Sync Posts to import data.");
+      } else {
+        setSyncStatus("Connect Instagram to start syncing posts and metrics.");
+      }
+    }
+  } catch (error) {
+    if (instagramSyncBtn) instagramSyncBtn.disabled = true;
+    if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = true;
+    if (connectInstagramBtn) connectInstagramBtn.disabled = false;
+    setSyncStatus(`Failed to check Instagram connection: ${error.message || "unknown error"}`, true);
+  }
+}
+
+connectInstagramBtn?.addEventListener("click", async () => {
+  if (!currentUser) {
+    window.location.href = "/index.html";
     return;
   }
 
-  saveInstagramAppId(appId);
-  const redirectUri = `${window.location.origin}/app.html`;
-  const authUrl = new URL("https://api.instagram.com/oauth/authorize");
-  authUrl.searchParams.set("client_id", appId);
-  authUrl.searchParams.set("redirect_uri", redirectUri);
-  authUrl.searchParams.set("response_type", "token");
-  authUrl.searchParams.set("scope", "user_profile,user_media");
-  window.location.href = authUrl.toString();
+  setInstagramButtonsDisabled(true);
+  setSyncStatus("Redirecting to Meta login...");
+  try {
+    const data = await callInstagramApi("/connect", { method: "POST" });
+    if (!data?.authUrl) {
+      throw new Error("OAuth URL was not returned.");
+    }
+    window.location.href = data.authUrl;
+  } catch (error) {
+    setInstagramButtonsDisabled(false);
+    setSyncStatus(`Connect failed: ${error.message || "unknown error"}`, true);
+  }
 });
 
-disconnectInstagramBtn?.addEventListener("click", () => {
-  clearInstagramToken();
-  setSyncStatus("Instagram token removed.");
+disconnectInstagramBtn?.addEventListener("click", async () => {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+
+  setInstagramButtonsDisabled(true);
+  setSyncStatus("Disconnecting Instagram...");
+  try {
+    await callInstagramApi("/disconnect", { method: "POST" });
+    setSyncStatus("Instagram disconnected.");
+  } catch (error) {
+    setSyncStatus(`Disconnect failed: ${error.message || "unknown error"}`, true);
+  } finally {
+    await refreshInstagramConnectionStatus({ preserveStatus: true });
+  }
 });
 
 instagramSyncBtn?.addEventListener("click", async () => {
@@ -904,169 +942,36 @@ instagramSyncBtn?.addEventListener("click", async () => {
     return;
   }
 
-  const token = getInstagramToken();
   const limit = Math.max(1, Math.min(50, Number(instagramLimitEl?.value || 12)));
-  if (!token) {
-    setSyncStatus("Paste your Instagram access token first.", true);
-    instagramTokenEl?.focus();
-    return;
-  }
-
-  instagramSyncBtn.disabled = true;
+  setInstagramButtonsDisabled(true);
   setSyncStatus("Syncing Instagram posts...");
   try {
-    const media = await fetchInstagramMedia(token, limit);
-    if (!media.length) {
-      setSyncStatus("No posts found for this token.");
-      return;
-    }
-
-    const existing = await getAllReelsForUser(currentUser.id);
-    const existingByUrl = new Map();
-    existing.forEach((reel) => {
-      const key = canonicalizeReelUrl(reel.video_url || reel.storage_path);
-      if (!key || existingByUrl.has(key)) return;
-      existingByUrl.set(key, reel);
+    const result = await callInstagramApi("/sync", {
+      method: "POST",
+      body: { limit },
     });
 
-    const prepared = await Promise.all(
-      media.map(async (item) => {
-        const permalink = String(item.permalink || "").trim();
-        if (!permalink) return null;
-        const canonicalPermalink = canonicalizeReelUrl(permalink);
-        if (!canonicalPermalink) return null;
-        const metrics = await getInstagramMetrics(token, item);
-        const title = String(item.caption || "").split("\n")[0].trim() || `Instagram post ${item.id}`;
-        const reelType = String(item.media_type || "").toLowerCase().includes("image") ? "static" : "video";
-        return {
-          permalink,
-          canonicalPermalink,
-          title: title.slice(0, 120),
-          reel_type: reelType,
-          ...metrics,
-        };
-      }),
-    );
-
-    const newRows = [];
-    const updateRows = [];
-    let rowsWithImportedMetrics = 0;
-
-    prepared.forEach((item) => {
-      if (!item) return;
-      const hasMetrics =
-        item.views > 0 ||
-        item.likes > 0 ||
-        item.comments > 0 ||
-        item.saves > 0 ||
-        item.average_watch_time !== null ||
-        item.this_reel_skip_rate !== null ||
-        item.accounts_reached !== null;
-      if (hasMetrics) rowsWithImportedMetrics += 1;
-
-      const existingRow = existingByUrl.get(item.canonicalPermalink);
-      if (existingRow) {
-        const currentViews = Number(existingRow.views) || 0;
-        const currentLikes = Number(existingRow.likes) || 0;
-        const currentComments = Number(existingRow.comments) || 0;
-        const currentSaves = Number(existingRow.saves) || 0;
-        const currentAverageWatch = normalizeAverageWatchSeconds(existingRow.average_watch_time ?? existingRow.avg_watch_time);
-        const currentSkipRate = skipRateFromReel(existingRow);
-        const currentAccountsReached = parsePastedMetric(existingRow.accounts_reached);
-        updateRows.push({
-          id: existingRow.id,
-          views: Math.max(currentViews, item.views),
-          likes: Math.max(currentLikes, item.likes),
-          comments: Math.max(currentComments, item.comments),
-          saves: Math.max(currentSaves, item.saves),
-          // Never overwrite manual fields during sync. Fill only if currently empty.
-          ...buildWatchMetricFields(currentAverageWatch ?? item.average_watch_time, currentSkipRate ?? item.this_reel_skip_rate),
-          accounts_reached: currentAccountsReached ?? item.accounts_reached,
-        });
-        return;
-      }
-
-      newRows.push({
-        user_id: currentUser.id,
-        title: item.title,
-        platform: "Instagram",
-        storage_path: item.permalink,
-        video_url: item.permalink,
-        reel_type: item.reel_type,
-        views: item.views,
-        likes: item.likes,
-        comments: item.comments,
-        saves: item.saves,
-        ...buildWatchMetricFields(item.average_watch_time, item.this_reel_skip_rate),
-        accounts_reached: item.accounts_reached,
-      });
-    });
-
-    if (!newRows.length && !updateRows.length) {
-      setSyncStatus("No importable Instagram posts found.");
-      return;
-    }
-
-    if (newRows.length) {
-      await insertReelsWithFallback(newRows, "Instagram sync insert timed out.");
-    }
-
-    if (updateRows.length) {
-      const updateResults = await Promise.all(
-        updateRows.map(({ id, ...payload }) =>
-          updateReelWithFallback(id, currentUser.id, payload, "Instagram metrics update timed out."),
-        ),
-      );
-
-      const dropped = new Set(updateResults.flatMap((result) => result?.droppedColumns || []));
-      const missingAverageWatch = dropped.has("average_watch_time") && dropped.has("avg_watch_time");
-      const missingSkipRate = dropped.has("this_reel_skip_rate");
-      const missingReach = dropped.has("accounts_reached");
-      let missingSchemaColumnsMessage = "";
-      if (missingAverageWatch || missingSkipRate || missingReach) {
-        const missingFields = [];
-        if (missingAverageWatch) missingFields.push("average_watch_time");
-        if (missingSkipRate) missingFields.push("this_reel_skip_rate");
-        if (missingReach) missingFields.push("accounts_reached");
-        missingSchemaColumnsMessage = ` Missing Supabase columns: ${missingFields.join(", ")}. Run SQL migration, then sync again.`;
-      }
-
-      const metricsNote =
-        rowsWithImportedMetrics > 0
-          ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
-          : "Token did not expose analytics metrics; paste accounts reached and average watch time manually (skip rate optional).";
-      setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}${missingSchemaColumnsMessage}`, Boolean(missingSchemaColumnsMessage));
-      await render();
-      return;
+    const dropped = Array.isArray(result?.droppedColumns) ? result.droppedColumns : [];
+    let schemaWarning = "";
+    if (dropped.length) {
+      schemaWarning = ` Missing Supabase columns: ${dropped.join(", ")}. Run the latest SQL migration.`;
     }
 
     const metricsNote =
-      rowsWithImportedMetrics > 0
-        ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
-        : "Token did not expose analytics metrics; paste accounts reached and average watch time manually (skip rate optional).";
-    setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}`);
+      Number(result?.rowsWithImportedMetrics || 0) > 0
+        ? `${result.rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
+        : "Instagram did not expose some analytics metrics; paste accounts reached and average watch time manually (skip rate optional).";
+    setSyncStatus(
+      `Sync complete: ${Number(result?.inserted || 0)} new, ${Number(result?.updated || 0)} updated. ${metricsNote}${schemaWarning}`,
+      Boolean(schemaWarning),
+    );
     await render();
   } catch (error) {
     console.error(error);
     setSyncStatus(`Sync failed: ${error.message || "unknown error"}`, true);
   } finally {
-    instagramSyncBtn.disabled = false;
+    await refreshInstagramConnectionStatus({ preserveStatus: true });
   }
-});
-
-instagramAppIdEl?.addEventListener("input", () => {
-  const value = String(instagramAppIdEl.value || "").trim();
-  saveInstagramAppId(value);
-  refreshInstagramConnectState();
-});
-
-instagramTokenEl?.addEventListener("input", () => {
-  const token = String(instagramTokenEl.value || "").trim();
-  if (!token) {
-    localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
-    return;
-  }
-  localStorage.setItem(IG_TOKEN_STORAGE_KEY, token);
 });
 
 chipButtons.forEach((button) => {
@@ -1183,23 +1088,12 @@ logoutBtn.addEventListener("click", async () => {
 
 async function init() {
   clearLegacyOverlays();
-  handleInstagramOAuthReturn();
-  const storedAppId = localStorage.getItem(IG_APP_ID_STORAGE_KEY) || INSTAGRAM_CLIENT_ID;
-  if (storedAppId) {
-    saveInstagramAppId(storedAppId);
+  const hadOauthMessage = handleInstagramOAuthReturn();
+  if (!hadOauthMessage) {
+    setSyncStatus("Connect Instagram to start syncing posts and metrics.");
   }
-  const storedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
-  if (storedToken && instagramTokenEl && !instagramTokenEl.value) {
-    instagramTokenEl.value = storedToken;
-  }
-  refreshInstagramConnectState();
-  if (storedToken) {
-    setSyncStatus("Instagram token ready. Click Sync Posts to import.");
-  } else if (storedAppId) {
-    setSyncStatus("Instagram App ID saved. Click Connect Instagram to authorize.");
-  } else {
-    setSyncStatus("Use token mode or add Instagram App ID for one-click OAuth connect.");
-  }
+
+  setInstagramButtonsDisabled(true);
   const user = await getUser().catch(() => null);
   if (!user) {
     window.location.href = "/index.html";
@@ -1207,6 +1101,7 @@ async function init() {
   }
   currentUser = user;
   userEmailEl.textContent = user.email || "";
+  await refreshInstagramConnectionStatus({ preserveStatus: hadOauthMessage });
   await render();
 }
 

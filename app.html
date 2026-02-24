@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260224o" />
+    <link rel="stylesheet" href="/styles.css?v=20260224q" />
   </head>
   <body>
     <main class="app">
@@ -31,35 +31,19 @@
             <div class="sync-actions">
               <button id="connect-instagram-btn" type="button" class="secondary">Connect Instagram</button>
               <button id="disconnect-instagram-btn" type="button" class="secondary">Disconnect</button>
-              <button id="sync-instagram-btn" type="button" class="secondary">Sync Posts</button>
             </div>
           </div>
           <div class="grid">
-            <label class="full">
-              Instagram App ID (for one-click OAuth connect)
-              <input
-                id="instagram-app-id"
-                name="instagram_app_id"
-                placeholder="Paste Meta Instagram App ID (optional)"
-                inputmode="numeric"
-              />
-            </label>
-            <label class="full">
-              Instagram User Access Token
-              <input
-                id="instagram-token"
-                name="instagram_token"
-                type="password"
-                placeholder="Paste Instagram Graph API token"
-              />
-            </label>
             <label>
               Import limit
               <input id="instagram-limit" name="instagram_limit" type="number" min="1" max="50" value="12" />
             </label>
+            <div class="full sync-inline">
+              <button id="sync-instagram-btn" type="button">Sync Posts Now</button>
+            </div>
           </div>
           <p class="meta">
-            If App ID is empty, use token mode: paste a valid Instagram user access token and click Sync Posts.
+            Connect once via Meta OAuth. Access token is stored securely on the backend.
           </p>
           <p id="instagram-sync-status" class="meta"></p>
         </section>
@@ -150,6 +134,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260224o"></script>
+    <script type="module" src="/main.js?v=20260224q"></script>
   </body>
 </html>

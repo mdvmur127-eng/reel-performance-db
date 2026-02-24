@@ -7,10 +7,13 @@ create table if not exists public.reels (
   title text not null,
   platform text not null,
   storage_path text not null,
+  video_url text,
+  reel_type text not null default 'video',
   views integer not null default 0,
   likes integer not null default 0,
   comments integer not null default 0,
   saves integer not null default 0,
+  avg_watch_time numeric,
   average_watch_time numeric,
   this_reel_skip_rate numeric,
   accounts_reached integer
@@ -22,10 +25,13 @@ alter table public.reels
   add column if not exists title text,
   add column if not exists platform text,
   add column if not exists storage_path text,
+  add column if not exists video_url text,
+  add column if not exists reel_type text not null default 'video',
   add column if not exists views integer not null default 0,
   add column if not exists likes integer not null default 0,
   add column if not exists comments integer not null default 0,
   add column if not exists saves integer not null default 0,
+  add column if not exists avg_watch_time numeric,
   add column if not exists average_watch_time numeric,
   add column if not exists this_reel_skip_rate numeric,
   add column if not exists accounts_reached integer;
@@ -70,6 +76,42 @@ begin
   end if;
 
 end $$;
+
+create table if not exists public.instagram_oauth_states (
+  state text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create table if not exists public.instagram_connections (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  access_token text not null,
+  token_type text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.instagram_oauth_states enable row level security;
+alter table public.instagram_connections enable row level security;
+
+drop policy if exists "No direct access to oauth states" on public.instagram_oauth_states;
+drop policy if exists "No direct access to instagram connections" on public.instagram_connections;
+
+create policy "No direct access to oauth states"
+on public.instagram_oauth_states
+for all
+to authenticated
+using (false)
+with check (false);
+
+create policy "No direct access to instagram connections"
+on public.instagram_connections
+for all
+to authenticated
+using (false)
+with check (false);
 
 alter table public.reels enable row level security;
 

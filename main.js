@@ -70,6 +70,7 @@ function score(reel) {
   const likes = toNumber(reel.likes, 0);
   const comments = toNumber(reel.comments, 0);
   const saves = toNumber(reel.saves, 0);
+  const reelKind = getReelKind(reel);
   const avgWatchTime = toNumber(reel.avg_watch_time, 0);
   const holdRate3s = clamp(toNumber(reel.hold_rate_3s, 0), 0, 100);
   const rewatches = toNumber(reel.rewatches, 0);
@@ -78,6 +79,11 @@ function score(reel) {
   const denominator = Math.max(views, 1);
   const engagementRate = (likes + comments * 2 + saves * 3) / denominator;
   const boostedReach = Math.log10(accountsReached + 10);
+
+  if (reelKind === "static") {
+    return Number((engagementRate * 70 + boostedReach * 30).toFixed(2));
+  }
+
   const watchTimeScore = Math.min(avgWatchTime, 60) / 60;
   const holdRateScore = holdRate3s / 100;
   const rewatchScore = Math.min(rewatches / denominator, 1.5) / 1.5;
@@ -525,6 +531,16 @@ async function render() {
     (reel) => {
       const reelUrl = getReelUrl(reel);
       const reelKind = getReelKind(reel);
+      const instagramInsightsInputs =
+        reelKind === "static"
+          ? ""
+          : `
+          <p class="metrics-group-title full">Paste from Instagram Insights</p>
+          ${insightMetricInput("avg_watch_time", "Avg watch time (sec)", reel.avg_watch_time, "e.g. 7.8 or 7.8s")}
+          ${insightMetricInput("hold_rate_3s", "3s hold rate (%)", reel.hold_rate_3s, "e.g. 42 or 42%")}
+          ${insightMetricInput("rewatches", "Rewatches", reel.rewatches, "e.g. 65")}
+          ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "Optional autofill")}
+        `;
       return `
       <article class="card" data-id="${reel.id}" data-path="${escapeHtml(reel.storage_path || "")}" data-platform="${escapeHtml(reel.platform || "")}" data-kind="${escapeHtml(reelKind)}">
         <div class="head-row">
@@ -542,11 +558,7 @@ async function render() {
           ${metricInput("likes", reel.likes)}
           ${metricInput("comments", reel.comments)}
           ${metricInput("saves", reel.saves)}
-          <p class="metrics-group-title full">Paste from Instagram Insights</p>
-          ${insightMetricInput("avg_watch_time", "Avg watch time (sec)", reel.avg_watch_time, "e.g. 7.8 or 7.8s")}
-          ${insightMetricInput("hold_rate_3s", "3s hold rate (%)", reel.hold_rate_3s, "e.g. 42 or 42%")}
-          ${insightMetricInput("rewatches", "Rewatches", reel.rewatches, "e.g. 65")}
-          ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "Optional autofill")}
+          ${instagramInsightsInputs}
         </form>
         <div class="actions">
           <button type="button" data-action="save">Save Metrics</button>

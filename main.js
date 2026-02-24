@@ -71,6 +71,25 @@ function parsePastedMetric(value, { percent = false } = {}) {
   return percent ? normalizePercentValue(parsed) : Math.max(0, parsed);
 }
 
+function skipRateFromReel(reel) {
+  const direct = parsePastedMetric(reel.this_reel_skip_rate, { percent: true });
+  if (direct !== null) return direct;
+  const holdFallback = parsePastedMetric(reel.hold_rate_3s, { percent: true });
+  if (holdFallback === null) return null;
+  return normalizePercentValue(100 - holdFallback);
+}
+
+function buildWatchMetricFields(averageWatchTime, thisReelSkipRate) {
+  const safeSkip = thisReelSkipRate === null ? null : normalizePercentValue(thisReelSkipRate);
+  const legacyHoldRate = safeSkip === null ? null : normalizePercentValue(100 - safeSkip);
+  return {
+    average_watch_time: averageWatchTime,
+    this_reel_skip_rate: safeSkip,
+    avg_watch_time: averageWatchTime,
+    hold_rate_3s: legacyHoldRate,
+  };
+}
+
 function score(reel) {
   const views = toNumber(reel.views, 0);
   const likes = toNumber(reel.likes, 0);
@@ -544,13 +563,14 @@ async function render() {
     (reel) => {
       const reelUrl = getReelUrl(reel);
       const reelKind = getReelKind(reel);
+      const skipRateValue = skipRateFromReel(reel);
       const instagramInsightsInputs =
         reelKind === "static"
           ? ""
           : `
           <p class="metrics-group-title full">Paste from Instagram Insights</p>
           ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "e.g. 12000")}
-          ${insightMetricInput("this_reel_skip_rate", "This reel skip rate (%)", reel.this_reel_skip_rate, "e.g. 38 or 38%")}
+          ${insightMetricInput("this_reel_skip_rate", "This reel skip rate (%)", skipRateValue, "e.g. 38 or 38%")}
           ${insightMetricInput(
             "average_watch_time",
             "Average watch time (s)",
@@ -736,8 +756,7 @@ uploadForm.addEventListener("submit", async (event) => {
       likes: 0,
       comments: 0,
       saves: 0,
-      average_watch_time: null,
-      this_reel_skip_rate: null,
+      ...buildWatchMetricFields(null, null),
       accounts_reached: null,
     };
 
@@ -876,7 +895,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
         const currentComments = Number(existingRow.comments) || 0;
         const currentSaves = Number(existingRow.saves) || 0;
         const currentAverageWatch = parsePastedMetric(existingRow.average_watch_time ?? existingRow.avg_watch_time);
-        const currentSkipRate = parsePastedMetric(existingRow.this_reel_skip_rate, { percent: true });
+        const currentSkipRate = skipRateFromReel(existingRow);
         const currentAccountsReached = parsePastedMetric(existingRow.accounts_reached);
         updateRows.push({
           id: existingRow.id,
@@ -884,8 +903,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
           likes: Math.max(currentLikes, item.likes),
           comments: Math.max(currentComments, item.comments),
           saves: Math.max(currentSaves, item.saves),
-          average_watch_time: item.average_watch_time ?? currentAverageWatch,
-          this_reel_skip_rate: item.this_reel_skip_rate ?? currentSkipRate,
+          ...buildWatchMetricFields(item.average_watch_time ?? currentAverageWatch, item.this_reel_skip_rate ?? currentSkipRate),
           accounts_reached: item.accounts_reached ?? currentAccountsReached,
         });
         return;
@@ -902,8 +920,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
         likes: item.likes,
         comments: item.comments,
         saves: item.saves,
-        average_watch_time: item.average_watch_time,
-        this_reel_skip_rate: item.this_reel_skip_rate,
+        ...buildWatchMetricFields(item.average_watch_time, item.this_reel_skip_rate),
         accounts_reached: item.accounts_reached,
       });
     });
@@ -1009,8 +1026,7 @@ listEl.addEventListener("click", async (event) => {
       likes: Math.round(parsePastedMetric(fd.get("likes")) ?? 0),
       comments: Math.round(parsePastedMetric(fd.get("comments")) ?? 0),
       saves: Math.round(parsePastedMetric(fd.get("saves")) ?? 0),
-      average_watch_time: averageWatchTime,
-      this_reel_skip_rate: thisReelSkipRate,
+      ...buildWatchMetricFields(averageWatchTime, thisReelSkipRate),
       accounts_reached: accountsReached === null ? null : Math.round(accountsReached),
     };
 

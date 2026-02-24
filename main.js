@@ -162,6 +162,20 @@ function getReelUrl(reel) {
   return /^https?:\/\//i.test(candidate) ? candidate : "";
 }
 
+function canonicalizeReelUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const path = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${parsed.protocol}//${host}${path}`;
+  } catch {
+    return raw.replace(/[#?].*$/, "").replace(/\/+$/, "");
+  }
+}
+
 function clearLegacyOverlays() {
   document.querySelectorAll(".loading-overlay").forEach((node) => node.remove());
 }
@@ -849,21 +863,25 @@ instagramSyncBtn?.addEventListener("click", async () => {
     }
 
     const existing = await getAllReelsForUser(currentUser.id);
-    const existingByUrl = new Map(
-      existing
-        .map((reel) => [String(reel.video_url || reel.storage_path || "").trim(), reel])
-        .filter(([url]) => Boolean(url)),
-    );
+    const existingByUrl = new Map();
+    existing.forEach((reel) => {
+      const key = canonicalizeReelUrl(reel.video_url || reel.storage_path);
+      if (!key || existingByUrl.has(key)) return;
+      existingByUrl.set(key, reel);
+    });
 
     const prepared = await Promise.all(
       media.map(async (item) => {
         const permalink = String(item.permalink || "").trim();
         if (!permalink) return null;
+        const canonicalPermalink = canonicalizeReelUrl(permalink);
+        if (!canonicalPermalink) return null;
         const metrics = await getInstagramMetrics(token, item);
         const title = String(item.caption || "").split("\n")[0].trim() || `Instagram post ${item.id}`;
         const reelType = String(item.media_type || "").toLowerCase().includes("image") ? "static" : "video";
         return {
           permalink,
+          canonicalPermalink,
           title: title.slice(0, 120),
           reel_type: reelType,
           ...metrics,
@@ -887,7 +905,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
         item.accounts_reached !== null;
       if (hasMetrics) rowsWithImportedMetrics += 1;
 
-      const existingRow = existingByUrl.get(item.permalink);
+      const existingRow = existingByUrl.get(item.canonicalPermalink);
       if (existingRow) {
         const currentViews = Number(existingRow.views) || 0;
         const currentLikes = Number(existingRow.likes) || 0;
@@ -902,8 +920,9 @@ instagramSyncBtn?.addEventListener("click", async () => {
           likes: Math.max(currentLikes, item.likes),
           comments: Math.max(currentComments, item.comments),
           saves: Math.max(currentSaves, item.saves),
-          ...buildWatchMetricFields(item.average_watch_time ?? currentAverageWatch, item.this_reel_skip_rate ?? currentSkipRate),
-          accounts_reached: item.accounts_reached ?? currentAccountsReached,
+          // Never overwrite manual fields during sync. Fill only if currently empty.
+          ...buildWatchMetricFields(currentAverageWatch ?? item.average_watch_time, currentSkipRate ?? item.this_reel_skip_rate),
+          accounts_reached: currentAccountsReached ?? item.accounts_reached,
         });
         return;
       }
@@ -955,7 +974,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
 
       const metricsNote =
         rowsWithImportedMetrics > 0
-          ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Fill missing skip/watch/reach values manually where needed.`
+          ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
           : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
       setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}${missingSchemaColumnsMessage}`, Boolean(missingSchemaColumnsMessage));
       await render();
@@ -964,7 +983,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
 
     const metricsNote =
       rowsWithImportedMetrics > 0
-        ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Fill missing skip/watch/reach values manually where needed.`
+        ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
         : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
     setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}`);
     await render();

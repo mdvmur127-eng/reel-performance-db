@@ -71,6 +71,16 @@ function parsePastedMetric(value, { percent = false } = {}) {
   return percent ? normalizePercentValue(parsed) : Math.max(0, parsed);
 }
 
+function normalizeAverageWatchSeconds(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+
+  // Instagram may return watch-time in milliseconds in some insights responses.
+  const seconds = numeric > 600 ? numeric / 1000 : numeric;
+  return Number(seconds.toFixed(2));
+}
+
 function skipRateFromReel(reel) {
   const direct = parsePastedMetric(reel.this_reel_skip_rate, { percent: true });
   if (direct !== null) return direct;
@@ -79,11 +89,12 @@ function skipRateFromReel(reel) {
 }
 
 function buildWatchMetricFields(averageWatchTime, thisReelSkipRate) {
+  const safeWatchTime = normalizeAverageWatchSeconds(averageWatchTime);
   const safeSkip = thisReelSkipRate === null ? null : normalizePercentValue(thisReelSkipRate);
   return {
-    average_watch_time: averageWatchTime,
+    average_watch_time: safeWatchTime,
     this_reel_skip_rate: safeSkip,
-    avg_watch_time: averageWatchTime,
+    avg_watch_time: safeWatchTime,
   };
 }
 
@@ -93,7 +104,7 @@ function score(reel) {
   const comments = toNumber(reel.comments, 0);
   const saves = toNumber(reel.saves, 0);
   const reelKind = getReelKind(reel);
-  const avgWatchTime = toNumber(reel.average_watch_time ?? reel.avg_watch_time, 0);
+  const avgWatchTime = toNumber(normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time), 0);
   const skipSource = reel.this_reel_skip_rate ?? reel.skip_rate;
   let skipRate = toNumber(skipSource, Number.NaN);
   skipRate = normalizePercentValue(skipRate) ?? 100;
@@ -402,7 +413,7 @@ async function getInstagramMetrics(token, item) {
         "ig_reels_avg_watch_time",
         "avg_watch_time",
       ]);
-  let averageWatchTime = toOptionalMetricNumber(averageWatchMetric);
+  let averageWatchTime = normalizeAverageWatchSeconds(averageWatchMetric);
   let thisReelSkipRate = toOptionalMetricNumber(skipRateMetric);
 
   // Fallback for tokens that expose views only through insights endpoints.
@@ -414,7 +425,7 @@ async function getInstagramMetrics(token, item) {
   if (!isImageOnly && averageWatchTime === null) {
     const totalWatchTime = await fetchFirstInstagramInsightValue(token, item.id, ["watch_time", "video_view_time"]);
     if (totalWatchTime !== null && views > 0) {
-      averageWatchTime = Number((totalWatchTime / views).toFixed(2));
+      averageWatchTime = normalizeAverageWatchSeconds(totalWatchTime / views);
     }
   }
 
@@ -556,7 +567,7 @@ async function render() {
           ${insightMetricInput(
             "average_watch_time",
             "Average watch time (s)",
-            reel.average_watch_time ?? reel.avg_watch_time,
+            normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time),
             "e.g. 7.8 or 7.8s",
           )}
         `;
@@ -606,7 +617,13 @@ function renderInsights(reels) {
 
   const metric = insightsMetricEl.value || "views";
   const items = [...reels].slice(0, 8);
-  const values = items.map((reel) => (metric === "score" ? reel.rankScore : Number(reel[metric]) || 0));
+  const values = items.map((reel) => {
+    if (metric === "score") return reel.rankScore;
+    if (metric === "average_watch_time") {
+      return normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time) || 0;
+    }
+    return Number(reel[metric]) || 0;
+  });
   const max = Math.max(...values, 0);
 
   ctx.clearRect(0, 0, insightsChartEl.width, insightsChartEl.height);
@@ -876,7 +893,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
         const currentLikes = Number(existingRow.likes) || 0;
         const currentComments = Number(existingRow.comments) || 0;
         const currentSaves = Number(existingRow.saves) || 0;
-        const currentAverageWatch = parsePastedMetric(existingRow.average_watch_time ?? existingRow.avg_watch_time);
+        const currentAverageWatch = normalizeAverageWatchSeconds(existingRow.average_watch_time ?? existingRow.avg_watch_time);
         const currentSkipRate = skipRateFromReel(existingRow);
         const currentAccountsReached = parsePastedMetric(existingRow.accounts_reached);
         updateRows.push({

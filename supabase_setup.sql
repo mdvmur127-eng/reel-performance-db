@@ -53,6 +53,20 @@ begin
     update public.reels
     set average_watch_time = coalesce(average_watch_time, avg_watch_time)
     where average_watch_time is null;
+
+    update public.reels
+    set avg_watch_time = round((avg_watch_time / 1000.0)::numeric, 2)
+    where avg_watch_time > 600;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public' and table_name = 'reels' and column_name = 'average_watch_time'
+  ) then
+    update public.reels
+    set average_watch_time = round((average_watch_time / 1000.0)::numeric, 2)
+    where average_watch_time > 600;
   end if;
 
 end $$;

@@ -222,11 +222,43 @@ h2 {
 }
 
 .insights-chart {
-  width: 100%;
+  width: auto;
+  min-width: 100%;
   height: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--white);
+  display: block;
+}
+
+.insights-scroll {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.insights-best-legend {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.insights-best-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.insights-best-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
 }
 
 .recommendation-card {

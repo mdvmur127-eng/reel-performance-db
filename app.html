@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260224e" />
+    <link rel="stylesheet" href="/styles.css?v=20260224o" />
   </head>
   <body>
     <main class="app">
@@ -142,11 +142,14 @@
               </select>
             </label>
           </div>
-          <canvas id="insights-chart" class="insights-chart" width="1100" height="420" aria-label="Reel metrics chart"></canvas>
+          <div class="insights-scroll">
+            <canvas id="insights-chart" class="insights-chart" width="1100" height="420" aria-label="Reel metrics chart"></canvas>
+          </div>
+          <div id="insights-best-legend" class="insights-best-legend"></div>
           <p id="insights-empty" class="meta"></p>
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260224n"></script>
+    <script type="module" src="/main.js?v=20260224o"></script>
   </body>
 </html>

@@ -30,6 +30,7 @@ const viewInsights = document.getElementById("view-insights");
 const insightsMetricEl = document.getElementById("insight-metric");
 const insightsChartEl = document.getElementById("insights-chart");
 const insightsEmptyEl = document.getElementById("insights-empty");
+const insightsBestLegendEl = document.getElementById("insights-best-legend");
 const recommendationTitleEl = document.getElementById("recommendation-title");
 const recommendationBodyEl = document.getElementById("recommendation-body");
 const recommendationPointsEl = document.getElementById("recommendation-points");
@@ -244,6 +245,14 @@ function inferKindFromUrl(url) {
     return "video";
   }
   return "video";
+}
+
+function insightMetricValue(reel, metric) {
+  if (metric === "score") return Number(reel.rankScore) || 0;
+  if (metric === "average_watch_time") {
+    return normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time) || 0;
+  }
+  return Number(reel[metric]) || 0;
 }
 
 function getReelKind(reel) {
@@ -540,17 +549,19 @@ async function render() {
     return;
   }
   cachedReels = reels;
+  const allWithScores = reels.map((reel) => ({ ...reel, rankScore: score(reel) }));
   const visibleReels = filterByKind(reels);
 
   if (!visibleReels.length) {
     listEl.innerHTML = '<div class="meta">No reels yet. Add your first one above.</div>';
     rankingEl.innerHTML = '<div class="meta">Add reels with metrics to see ranking.</div>';
-    renderInsights([]);
+    renderRecommendation(allWithScores);
+    renderInsights(allWithScores);
     return;
   }
 
-  const withScores = visibleReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
-  const ranked = [...withScores].sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
+  const visibleWithScores = visibleReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
+  const ranked = [...visibleWithScores].sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
 
   rankingEl.innerHTML = ranked
     .map(
@@ -566,7 +577,7 @@ async function render() {
     )
     .join("");
 
-  const cards = withScores.map(
+  const cards = visibleWithScores.map(
     (reel) => {
       const reelUrl = getReelUrl(reel);
       const reelKind = getReelKind(reel);
@@ -614,14 +625,19 @@ async function render() {
   );
 
   listEl.innerHTML = cards.join("");
-  renderRecommendation(withScores);
-  renderInsights(withScores);
+  renderRecommendation(allWithScores);
+  renderInsights(allWithScores);
 }
 
 function activateTab(tabName) {
   tabButtons.forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
   viewOverview.classList.toggle("active", tabName === "overview");
   viewInsights.classList.toggle("active", tabName === "insights");
+  if (tabName === "insights") {
+    const withScores = cachedReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
+    renderRecommendation(withScores);
+    renderInsights(withScores);
+  }
 }
 
 function renderInsights(reels) {
@@ -630,17 +646,29 @@ function renderInsights(reels) {
   if (!ctx) return;
 
   const metric = insightsMetricEl.value || "views";
-  const items = [...reels].slice(0, 8);
-  const values = items.map((reel) => {
-    if (metric === "score") return reel.rankScore;
-    if (metric === "average_watch_time") {
-      return normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time) || 0;
-    }
-    return Number(reel[metric]) || 0;
-  });
+  const items = [...reels];
+  const values = items.map((reel) => insightMetricValue(reel, metric));
   const max = Math.max(...values, 0);
 
-  ctx.clearRect(0, 0, insightsChartEl.width, insightsChartEl.height);
+  const chartPadding = { top: 24, right: 20, bottom: 90, left: 60 };
+  const minBarWidth = 46;
+  const barGap = 16;
+  const containerWidth = insightsChartEl.parentElement?.clientWidth || 1100;
+  const basePlotWidth = Math.max(300, containerWidth - chartPadding.left - chartPadding.right);
+  const neededPlotWidth = Math.max(basePlotWidth, items.length * minBarWidth + Math.max(0, items.length - 1) * barGap);
+  const chartWidth = chartPadding.left + neededPlotWidth + chartPadding.right;
+  const chartHeight = 420;
+
+  if (insightsChartEl.width !== chartWidth) insightsChartEl.width = chartWidth;
+  if (insightsChartEl.height !== chartHeight) insightsChartEl.height = chartHeight;
+  insightsChartEl.style.width = `${chartWidth}px`;
+  insightsChartEl.style.height = `${chartHeight}px`;
+
+  ctx.clearRect(0, 0, chartWidth, chartHeight);
+
+  if (insightsBestLegendEl) {
+    insightsBestLegendEl.innerHTML = "";
+  }
 
   if (!items.length || max <= 0) {
     insightsEmptyEl.textContent = items.length ? "Selected metric is zero for all reels." : "Add reels to see insights.";
@@ -648,11 +676,23 @@ function renderInsights(reels) {
   }
 
   insightsEmptyEl.textContent = "";
-  const chartPadding = { top: 24, right: 20, bottom: 90, left: 60 };
-  const plotWidth = insightsChartEl.width - chartPadding.left - chartPadding.right;
-  const plotHeight = insightsChartEl.height - chartPadding.top - chartPadding.bottom;
-  const barGap = 18;
-  const barWidth = Math.max(24, (plotWidth - barGap * (items.length - 1)) / items.length);
+  const plotWidth = chartWidth - chartPadding.left - chartPadding.right;
+  const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom;
+  const barWidth = (plotWidth - barGap * (items.length - 1)) / items.length;
+
+  const categoryOrder = [];
+  const bestByCategory = new Map();
+  items.forEach((reel, index) => {
+    const category = String(reel.platform || "Other");
+    if (!categoryOrder.includes(category)) categoryOrder.push(category);
+    const value = values[index];
+    const best = bestByCategory.get(category);
+    if (!best || value > best.value) {
+      bestByCategory.set(category, { index, value, title: reel.title });
+    }
+  });
+  const categoryColors = ["#1e2a38", "#0f172a", "#334155", "#000000", "#475569", "#64748b"];
+  const colorByCategory = new Map(categoryOrder.map((name, index) => [name, categoryColors[index % categoryColors.length]]));
 
   ctx.strokeStyle = "rgba(30, 42, 56, 0.35)";
   ctx.lineWidth = 1;
@@ -680,8 +720,9 @@ function renderInsights(reels) {
     const barHeight = (value / max) * plotHeight;
     const x = chartPadding.left + index * (barWidth + barGap);
     const y = chartPadding.top + plotHeight - barHeight;
-
-    ctx.fillStyle = "#f5a622";
+    const category = String(reel.platform || "Other");
+    const isCategoryBest = bestByCategory.get(category)?.index === index;
+    ctx.fillStyle = isCategoryBest ? colorByCategory.get(category) || "#1e2a38" : "#f5a622";
     ctx.fillRect(x, y, barWidth, barHeight);
 
     ctx.fillStyle = "#1e2a38";
@@ -695,6 +736,24 @@ function renderInsights(reels) {
 
     ctx.fillText(String(value), x, y - 8);
   });
+
+  if (insightsBestLegendEl) {
+    const legendItems = categoryOrder
+      .map((category) => {
+        const best = bestByCategory.get(category);
+        if (!best) return "";
+        const swatch = colorByCategory.get(category) || "#1e2a38";
+        return `
+          <span class="insights-best-item">
+            <span class="insights-best-swatch" style="background:${swatch};"></span>
+            Top ${escapeHtml(category)}: ${escapeHtml(best.title)}
+          </span>
+        `;
+      })
+      .filter(Boolean)
+      .join("");
+    insightsBestLegendEl.innerHTML = legendItems;
+  }
 }
 
 function renderRecommendation(reels) {

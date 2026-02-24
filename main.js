@@ -106,8 +106,7 @@ function score(reel) {
   const reelKind = getReelKind(reel);
   const avgWatchTime = toNumber(normalizeAverageWatchSeconds(reel.average_watch_time ?? reel.avg_watch_time), 0);
   const skipSource = reel.this_reel_skip_rate ?? reel.skip_rate;
-  let skipRate = toNumber(skipSource, Number.NaN);
-  skipRate = normalizePercentValue(skipRate) ?? 100;
+  const skipRate = normalizePercentValue(toNumber(skipSource, Number.NaN));
   const accountsReached = Math.max(toNumber(reel.accounts_reached, 0), views);
 
   const denominator = Math.max(views, 1);
@@ -119,7 +118,8 @@ function score(reel) {
   }
 
   const watchTimeScore = Math.min(avgWatchTime, 60) / 60;
-  const lowSkipScore = 1 - skipRate / 100;
+  // Skip rate is optional; if missing, use neutral contribution.
+  const lowSkipScore = skipRate === null ? 0.5 : 1 - skipRate / 100;
   const retentionSignal = watchTimeScore * 0.6 + lowSkipScore * 0.4;
 
   return Number((engagementRate * 55 + boostedReach * 25 + retentionSignal * 20).toFixed(2));
@@ -577,7 +577,7 @@ async function render() {
           : `
           <p class="metrics-group-title full">Paste from Instagram Insights</p>
           ${insightMetricInput("accounts_reached", "Accounts reached", reel.accounts_reached, "e.g. 12000")}
-          ${insightMetricInput("this_reel_skip_rate", "This reel skip rate (%)", skipRateValue, "e.g. 38 or 38%")}
+          ${insightMetricInput("this_reel_skip_rate", "This reel skip rate (%) - Optional", skipRateValue, "e.g. 38 or 38%")}
           ${insightMetricInput(
             "average_watch_time",
             "Average watch time (s)",
@@ -975,7 +975,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
       const metricsNote =
         rowsWithImportedMetrics > 0
           ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
-          : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
+          : "Token did not expose analytics metrics; paste accounts reached and average watch time manually (skip rate optional).";
       setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}${missingSchemaColumnsMessage}`, Boolean(missingSchemaColumnsMessage));
       await render();
       return;
@@ -984,7 +984,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
     const metricsNote =
       rowsWithImportedMetrics > 0
         ? `${rowsWithImportedMetrics} post(s) included analytics metrics. Manual skip/watch/reach values were preserved.`
-        : "Token did not expose analytics metrics; paste accounts reached, skip rate, and average watch time manually.";
+        : "Token did not expose analytics metrics; paste accounts reached and average watch time manually (skip rate optional).";
     setSyncStatus(`Sync complete: ${newRows.length} new, ${updateRows.length} updated. ${metricsNote}`);
     await render();
   } catch (error) {
@@ -1054,9 +1054,9 @@ listEl.addEventListener("click", async (event) => {
     if (
       platformName.includes("instagram") &&
       reelKind !== "static" &&
-      [accountsReached, thisReelSkipRate, averageWatchTime].some((value) => value === null)
+      [accountsReached, averageWatchTime].some((value) => value === null)
     ) {
-      alert("Paste Instagram Insights values for Accounts reached, This reel skip rate, and Average watch time before saving.");
+      alert("Paste Instagram Insights values for Accounts reached and Average watch time before saving. Skip rate is optional.");
       return;
     }
 

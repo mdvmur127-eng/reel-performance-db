@@ -435,6 +435,13 @@ button.secondary:hover {
   font-size: 12px;
 }
 
+.metrics-group-title {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .actions {
   margin-top: 12px;
   display: flex;

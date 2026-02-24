@@ -10,7 +10,11 @@ create table if not exists public.reels (
   views integer not null default 0,
   likes integer not null default 0,
   comments integer not null default 0,
-  saves integer not null default 0
+  saves integer not null default 0,
+  avg_watch_time numeric,
+  hold_rate_3s numeric,
+  rewatches integer,
+  accounts_reached integer
 );
 
 alter table public.reels
@@ -22,7 +26,11 @@ alter table public.reels
   add column if not exists views integer not null default 0,
   add column if not exists likes integer not null default 0,
   add column if not exists comments integer not null default 0,
-  add column if not exists saves integer not null default 0;
+  add column if not exists saves integer not null default 0,
+  add column if not exists avg_watch_time numeric,
+  add column if not exists hold_rate_3s numeric,
+  add column if not exists rewatches integer,
+  add column if not exists accounts_reached integer;
 
 do $$
 begin

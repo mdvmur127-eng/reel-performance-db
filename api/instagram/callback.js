@@ -66,6 +66,22 @@ async function exchangeCodeForToken({ code, redirectUri, instagramClientId, inst
   };
 }
 
+async function fetchInstagramUserId(accessToken) {
+  const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
+  const url = new URL(`https://graph.facebook.com/${graphVersion}/me/accounts`);
+  url.searchParams.set("fields", "instagram_business_account{id}");
+  url.searchParams.set("limit", "50");
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url.toString(), { method: "GET" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.error) return null;
+
+  const pages = Array.isArray(payload?.data) ? payload.data : [];
+  const page = pages.find((entry) => entry?.instagram_business_account?.id);
+  return page?.instagram_business_account?.id || null;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     return methodNotAllowed(res, ["GET"]);
@@ -139,6 +155,10 @@ module.exports = async function handler(req, res) {
       );
     }
     const tokenResult = await exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret });
+    const instagramUserId = await fetchInstagramUserId(tokenResult.accessToken);
+    if (!instagramUserId) {
+      throw new Error("Could not resolve Instagram user id from token. Reconnect Instagram and approve all requested permissions.");
+    }
 
     const expiresAt =
       tokenResult.expiresIn && tokenResult.expiresIn > 0
@@ -152,6 +172,7 @@ module.exports = async function handler(req, res) {
         {
           user_id: stateRow.user_id,
           access_token: tokenResult.accessToken,
+          instagram_user_id: instagramUserId,
           token_type: tokenResult.tokenType,
           expires_at: expiresAt,
           updated_at: new Date().toISOString(),

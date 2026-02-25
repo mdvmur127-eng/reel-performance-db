@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260225b" />
+    <link rel="stylesheet" href="/styles.css?v=20260225c" />
   </head>
   <body>
     <main class="app">
@@ -45,11 +45,12 @@
               <input id="instagram-limit" name="instagram_limit" type="number" min="1" max="50" value="5" />
             </label>
             <div class="full sync-inline">
+              <button id="sync-ig-btn" type="button">Sync IG Account</button>
               <button id="sync-instagram-btn" type="button">Sync Posts Now</button>
             </div>
           </div>
           <p class="meta">
-            Token mode only: paste a valid Instagram user access token, then click Sync Posts Now.
+            Use Sync IG Account for connected OAuth account, or use token mode with Sync Posts Now.
           </p>
           <p id="instagram-sync-status" class="meta"></p>
         </section>
@@ -153,6 +154,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260225b"></script>
+    <script type="module" src="/main.js?v=20260225c"></script>
   </body>
 </html>

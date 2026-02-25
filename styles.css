@@ -190,10 +190,16 @@ h2 {
 .sync-inline {
   display: flex;
   justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: -2px;
 }
 
 #sync-instagram-btn {
+  min-width: 170px;
+}
+
+#sync-ig-btn {
   min-width: 170px;
 }
 

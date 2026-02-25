@@ -16,6 +16,7 @@ const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
+const instagramConnectedSyncBtn = document.getElementById("sync-ig-btn");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
 const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
 const reelsSortEl = document.getElementById("reels-sort");
@@ -262,6 +263,7 @@ function getInstagramToken() {
 }
 
 function setInstagramButtonsDisabled(isDisabled) {
+  if (instagramConnectedSyncBtn) instagramConnectedSyncBtn.disabled = isDisabled;
   if (instagramSyncBtn) instagramSyncBtn.disabled = isDisabled;
 }
 
@@ -277,7 +279,7 @@ async function getAccessToken() {
 
 async function callInstagramApi(path, { method = "GET", body } = {}) {
   const timeoutMs =
-    path === "/sync"
+    path === "/sync" || path === "/sync-reels"
       ? 90000
       : path === "/status"
         ? 20000
@@ -994,6 +996,29 @@ instagramSyncBtn?.addEventListener("click", async () => {
   }
 });
 
+instagramConnectedSyncBtn?.addEventListener("click", async () => {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+
+  setInstagramButtonsDisabled(true);
+  setSyncStatus("Syncing Instagram reels from connected account...");
+  try {
+    const result = await callInstagramApi("/sync-reels", { method: "POST" });
+    const synced = Number(result?.synced || 0);
+    const created = Number(result?.new || 0);
+    const updated = Number(result?.updated || 0);
+    setSyncStatus(`IG sync complete: ${synced} synced (${created} new, ${updated} updated).`);
+    await render();
+  } catch (error) {
+    console.error(error);
+    setSyncStatus(`Sync failed: ${error.message || "unknown error"}`, true);
+  } finally {
+    setInstagramButtonsDisabled(false);
+  }
+});
+
 chipButtons.forEach((button) => {
   button.addEventListener("click", async () => {
     selectedKind = button.dataset.kind || "all";
@@ -1119,9 +1144,9 @@ async function init() {
     instagramTokenEl.value = normalizedSavedToken;
   }
   if (normalizedSavedToken) {
-    setSyncStatus("Token ready. Click Sync Posts Now.");
+    setSyncStatus("Use Sync IG Account (connected OAuth) or Sync Posts Now (token mode).");
   } else {
-    setSyncStatus("Paste Instagram user access token, then click Sync Posts Now.");
+    setSyncStatus("Use Sync IG Account if connected, or paste Instagram token and click Sync Posts Now.");
   }
 
   setInstagramButtonsDisabled(false);

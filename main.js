@@ -14,11 +14,9 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
-const instagramAppIdEl = document.getElementById("instagram-app-id");
+const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
-const connectInstagramBtn = document.getElementById("connect-instagram-btn");
-const disconnectInstagramBtn = document.getElementById("disconnect-instagram-btn");
 const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
 const chipButtons = document.querySelectorAll(".chip");
 const tabButtons = document.querySelectorAll(".tab-btn");
@@ -34,7 +32,7 @@ const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
-const IG_APP_ID_STORAGE_KEY = "instagram_app_id_override";
+const IG_TOKEN_STORAGE_KEY = "instagram_user_access_token";
 
 let currentUser = null;
 let cachedReels = [];
@@ -192,14 +190,12 @@ function setSyncStatus(message, isError = false) {
   instagramSyncStatusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
 }
 
-function getInstagramAppIdOverride() {
-  return String(instagramAppIdEl?.value || localStorage.getItem(IG_APP_ID_STORAGE_KEY) || "").trim();
+function getInstagramToken() {
+  return String(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "").trim();
 }
 
 function setInstagramButtonsDisabled(isDisabled) {
-  if (connectInstagramBtn) connectInstagramBtn.disabled = isDisabled;
   if (instagramSyncBtn) instagramSyncBtn.disabled = isDisabled;
-  if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = isDisabled;
 }
 
 async function getAccessToken() {
@@ -865,93 +861,12 @@ refreshRankingBtn.addEventListener("click", async () => {
   await render();
 });
 
-function handleInstagramOAuthReturn() {
-  const queryParams = new URLSearchParams(window.location.search);
-  const oauthState = queryParams.get("ig_oauth");
-  const oauthMessage = queryParams.get("ig_message");
-  if (!oauthState) return false;
-
-  if (oauthState === "success") {
-    setSyncStatus(oauthMessage || "Instagram connected. You can now sync posts.");
-  } else {
-    setSyncStatus(`Instagram connect failed: ${oauthMessage || "authorization failed."}`, true);
-  }
-  history.replaceState({}, "", window.location.pathname);
-  return true;
-}
-
-async function refreshInstagramConnectionStatus({ preserveStatus = false } = {}) {
-  if (!currentUser) return;
-
-  try {
-    const status = await callInstagramApi("/status");
-    const isConnected = Boolean(status.connected);
-    if (instagramSyncBtn) instagramSyncBtn.disabled = !isConnected;
-    if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = !isConnected;
-    if (connectInstagramBtn) connectInstagramBtn.disabled = false;
-    if (!preserveStatus) {
-      if (isConnected) {
-        setSyncStatus("Instagram is connected. Click Sync Posts to import data.");
-      } else {
-        setSyncStatus("Connect Instagram to start syncing posts and metrics.");
-      }
-    }
-  } catch (error) {
-    if (instagramSyncBtn) instagramSyncBtn.disabled = true;
-    if (disconnectInstagramBtn) disconnectInstagramBtn.disabled = true;
-    if (connectInstagramBtn) connectInstagramBtn.disabled = false;
-    setSyncStatus(`Failed to check Instagram connection: ${error.message || "unknown error"}`, true);
-  }
-}
-
-connectInstagramBtn?.addEventListener("click", async () => {
-  if (!currentUser) {
-    window.location.href = "/index.html";
-    return;
-  }
-
-  setInstagramButtonsDisabled(true);
-  setSyncStatus("Redirecting to Meta login...");
-  try {
-    const appIdOverride = getInstagramAppIdOverride();
-    const data = await callInstagramApi("/connect", {
-      method: "POST",
-      body: appIdOverride ? { appId: appIdOverride } : {},
-    });
-    if (!data?.authUrl) {
-      throw new Error("OAuth URL was not returned.");
-    }
-    window.location.href = data.authUrl;
-  } catch (error) {
-    setInstagramButtonsDisabled(false);
-    setSyncStatus(`Connect failed: ${error.message || "unknown error"}`, true);
-  }
-});
-
-instagramAppIdEl?.addEventListener("input", () => {
-  const value = String(instagramAppIdEl.value || "").trim();
+instagramTokenEl?.addEventListener("input", () => {
+  const value = String(instagramTokenEl.value || "").trim();
   if (value) {
-    localStorage.setItem(IG_APP_ID_STORAGE_KEY, value);
+    localStorage.setItem(IG_TOKEN_STORAGE_KEY, value);
   } else {
-    localStorage.removeItem(IG_APP_ID_STORAGE_KEY);
-  }
-});
-
-disconnectInstagramBtn?.addEventListener("click", async () => {
-  if (!currentUser) {
-    window.location.href = "/index.html";
-    return;
-  }
-
-  setInstagramButtonsDisabled(true);
-  setSyncStatus("Disconnecting Instagram...");
-  try {
-    await callInstagramApi("/disconnect", { method: "POST" });
-    setSyncStatus("Instagram disconnected.");
-  } catch (error) {
-    setSyncStatus(`Disconnect failed: ${error.message || "unknown error"}`, true);
-  } finally {
-    await refreshInstagramConnectionStatus({ preserveStatus: true });
+    localStorage.removeItem(IG_TOKEN_STORAGE_KEY);
   }
 });
 
@@ -962,12 +877,19 @@ instagramSyncBtn?.addEventListener("click", async () => {
   }
 
   const limit = Math.max(1, Math.min(50, Number(instagramLimitEl?.value || 12)));
+  const instagramToken = getInstagramToken();
+  if (!instagramToken) {
+    setSyncStatus("Paste your Instagram user access token first.", true);
+    instagramTokenEl?.focus();
+    return;
+  }
+
   setInstagramButtonsDisabled(true);
   setSyncStatus("Syncing Instagram posts...");
   try {
     const result = await callInstagramApi("/sync", {
       method: "POST",
-      body: { limit },
+      body: { limit, token: instagramToken },
     });
 
     const dropped = Array.isArray(result?.droppedColumns) ? result.droppedColumns : [];
@@ -989,7 +911,7 @@ instagramSyncBtn?.addEventListener("click", async () => {
     console.error(error);
     setSyncStatus(`Sync failed: ${error.message || "unknown error"}`, true);
   } finally {
-    await refreshInstagramConnectionStatus({ preserveStatus: true });
+    setInstagramButtonsDisabled(false);
   }
 });
 
@@ -1107,16 +1029,17 @@ logoutBtn.addEventListener("click", async () => {
 
 async function init() {
   clearLegacyOverlays();
-  const hadOauthMessage = handleInstagramOAuthReturn();
-  if (!hadOauthMessage) {
-    setSyncStatus("Connect Instagram to start syncing posts and metrics.");
+  const savedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
+  if (savedToken && instagramTokenEl && !instagramTokenEl.value) {
+    instagramTokenEl.value = savedToken;
+  }
+  if (savedToken) {
+    setSyncStatus("Token ready. Click Sync Posts Now.");
+  } else {
+    setSyncStatus("Paste Instagram user access token, then click Sync Posts Now.");
   }
 
-  setInstagramButtonsDisabled(true);
-  const savedAppId = localStorage.getItem(IG_APP_ID_STORAGE_KEY);
-  if (savedAppId && instagramAppIdEl && !instagramAppIdEl.value) {
-    instagramAppIdEl.value = savedAppId;
-  }
+  setInstagramButtonsDisabled(false);
   const user = await getUser().catch(() => null);
   if (!user) {
     window.location.href = "/index.html";
@@ -1124,7 +1047,6 @@ async function init() {
   }
   currentUser = user;
   userEmailEl.textContent = user.email || "";
-  await refreshInstagramConnectionStatus({ preserveStatus: hadOauthMessage });
   await render();
 }
 

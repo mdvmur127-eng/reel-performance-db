@@ -109,18 +109,9 @@ module.exports = async function handler(req, res) {
     const user = await requireUser(req);
     const body = await readJsonBody(req).catch(() => ({}));
     const limit = clamp(Number(body?.limit) || 12, 1, 50);
-
-    const connectionRows = await supabaseRest("instagram_connections", {
-      query: {
-        select: "access_token",
-        user_id: `eq.${user.id}`,
-        limit: 1,
-      },
-    });
-
-    const accessToken = Array.isArray(connectionRows) ? connectionRows[0]?.access_token : "";
+    const accessToken = String(body?.token || body?.instagramToken || "").trim();
     if (!accessToken) {
-      return json(res, 400, { error: "Instagram is not connected. Click Connect Instagram first." });
+      return json(res, 400, { error: "Missing Instagram token. Paste a valid token and retry sync." });
     }
 
     const media = await fetchInstagramMedia(accessToken, limit);

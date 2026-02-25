@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260224s" />
+    <link rel="stylesheet" href="/styles.css?v=20260224t" />
   </head>
   <body>
     <main class="app">
@@ -28,15 +28,17 @@
         <section class="panel">
           <div class="section-head">
             <h2>Instagram Sync</h2>
-            <div class="sync-actions">
-              <button id="connect-instagram-btn" type="button" class="secondary">Connect Instagram</button>
-              <button id="disconnect-instagram-btn" type="button" class="secondary">Disconnect</button>
-            </div>
           </div>
           <div class="grid">
             <label class="full">
-              Meta App ID (optional override)
-              <input id="instagram-app-id" name="instagram_app_id" inputmode="numeric" placeholder="If env is missing, paste App ID here" />
+              Instagram User Access Token
+              <input
+                id="instagram-token"
+                name="instagram_token"
+                type="password"
+                placeholder="Paste Instagram Graph API token"
+                autocomplete="off"
+              />
             </label>
             <label>
               Import limit
@@ -47,7 +49,7 @@
             </div>
           </div>
           <p class="meta">
-            Connect once via Meta OAuth. Requires an Instagram Professional (Business/Creator) account linked to a Facebook Page.
+            Token mode only: paste a valid Instagram user access token, then click Sync Posts Now.
           </p>
           <p id="instagram-sync-status" class="meta"></p>
         </section>
@@ -138,6 +140,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260224s"></script>
+    <script type="module" src="/main.js?v=20260224t"></script>
   </body>
 </html>

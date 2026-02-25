@@ -16,6 +16,7 @@ const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
+const instagramConnectBtn = document.getElementById("connect-instagram-btn");
 const instagramConnectedSyncBtn = document.getElementById("sync-ig-btn");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
 const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
@@ -263,6 +264,7 @@ function getInstagramToken() {
 }
 
 function setInstagramButtonsDisabled(isDisabled) {
+  if (instagramConnectBtn) instagramConnectBtn.disabled = isDisabled;
   if (instagramConnectedSyncBtn) instagramConnectedSyncBtn.disabled = isDisabled;
   if (instagramSyncBtn) instagramSyncBtn.disabled = isDisabled;
 }
@@ -281,7 +283,7 @@ async function callInstagramApi(path, { method = "GET", body } = {}) {
   const timeoutMs =
     path === "/sync" || path === "/sync-reels"
       ? 90000
-      : path === "/status"
+      : path === "/status" || path === "/connect" || path === "/disconnect"
         ? 20000
         : REQUEST_TIMEOUT_MS;
   const accessToken = await getAccessToken();
@@ -310,6 +312,23 @@ async function callInstagramApi(path, { method = "GET", body } = {}) {
   }
 
   return payload || {};
+}
+
+async function startInstagramConnectFlow() {
+  setInstagramButtonsDisabled(true);
+  setSyncStatus("Opening Instagram authorization...");
+  try {
+    const result = await callInstagramApi("/connect", { method: "POST" });
+    const authUrl = String(result?.authUrl || "").trim();
+    if (!authUrl) {
+      throw new Error("Instagram connect did not return an authorization URL.");
+    }
+    window.location.href = authUrl;
+  } catch (error) {
+    console.error(error);
+    setSyncStatus(`Connect failed: ${error.message || "unknown error"}`, true);
+    setInstagramButtonsDisabled(false);
+  }
 }
 
 function inferKindFromUrl(url) {
@@ -1013,10 +1032,23 @@ instagramConnectedSyncBtn?.addEventListener("click", async () => {
     await render();
   } catch (error) {
     console.error(error);
+    if (/instagram not connected/i.test(String(error?.message || ""))) {
+      setSyncStatus("Instagram not connected. Opening authorization...", false);
+      await startInstagramConnectFlow();
+      return;
+    }
     setSyncStatus(`Sync failed: ${error.message || "unknown error"}`, true);
   } finally {
     setInstagramButtonsDisabled(false);
   }
+});
+
+instagramConnectBtn?.addEventListener("click", async () => {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+  await startInstagramConnectFlow();
 });
 
 chipButtons.forEach((button) => {
@@ -1138,14 +1170,23 @@ logoutBtn.addEventListener("click", async () => {
 
 async function init() {
   clearLegacyOverlays();
+  const pageParams = new URLSearchParams(window.location.search);
+  const oauthState = pageParams.get("ig_oauth");
+  const oauthMessage = pageParams.get("ig_message");
+  if (oauthState || oauthMessage) {
+    setSyncStatus(oauthMessage || (oauthState === "success" ? "Instagram connected." : "Instagram connect failed."), oauthState === "error");
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+  }
+
   const savedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
   const normalizedSavedToken = normalizeInstagramToken(savedToken);
   if (normalizedSavedToken && instagramTokenEl && !instagramTokenEl.value) {
     instagramTokenEl.value = normalizedSavedToken;
   }
-  if (normalizedSavedToken) {
+  if (!oauthState && !oauthMessage && normalizedSavedToken) {
     setSyncStatus("Use Sync IG Account (connected OAuth) or Sync Posts Now (token mode).");
-  } else {
+  } else if (!oauthState && !oauthMessage) {
     setSyncStatus("Use Sync IG Account if connected, or paste Instagram token and click Sync Posts Now.");
   }
 

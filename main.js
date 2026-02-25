@@ -227,6 +227,19 @@ function canonicalizeReelUrl(url) {
   }
 }
 
+function dedupeReels(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const mediaId = String(row.instagram_media_id || "").trim();
+    const canonicalUrl = canonicalizeReelUrl(row.video_url || row.storage_path);
+    const key = mediaId ? `ig:${mediaId}` : canonicalUrl ? `url:${canonicalUrl}` : `id:${row.id}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, row);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
 function clearLegacyOverlays() {
   document.querySelectorAll(".loading-overlay").forEach((node) => node.remove());
 }
@@ -614,6 +627,7 @@ async function render() {
     rankingEl.innerHTML = '<div class="meta">Ranking unavailable.</div>';
     return;
   }
+  reels = dedupeReels(reels);
   cachedReels = reels;
   const allWithScores = reels.map((reel) => ({ ...reel, rankScore: score(reel) }));
   const visibleReels = filterByKind(reels);

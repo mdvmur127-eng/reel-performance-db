@@ -64,6 +64,11 @@ function normalizePublishedAt(value) {
   return new Date(timestamp).toISOString();
 }
 
+function normalizeMediaId(value) {
+  const raw = String(value || "").trim();
+  return raw || "";
+}
+
 function stripColumns(row, droppedColumns) {
   if (!droppedColumns.size) return { ...row };
   const clone = { ...row };
@@ -160,7 +165,12 @@ module.exports = async function handler(req, res) {
     });
 
     const existingByUrl = new Map();
+    const existingByMediaId = new Map();
     (Array.isArray(existingRows) ? existingRows : []).forEach((row) => {
+      const mediaId = normalizeMediaId(row.instagram_media_id);
+      if (mediaId && !existingByMediaId.has(mediaId)) {
+        existingByMediaId.set(mediaId, row);
+      }
       const canonical = canonicalizeReelUrl(row.video_url || row.storage_path);
       if (!canonical || existingByUrl.has(canonical)) return;
       existingByUrl.set(canonical, row);
@@ -168,14 +178,19 @@ module.exports = async function handler(req, res) {
 
     const newRows = [];
     const updateRows = [];
+    const seenMediaKeys = new Set();
     let rowsWithImportedMetrics = 0;
 
     for (const item of media) {
+      const mediaId = normalizeMediaId(item.id);
       const permalink = String(item.permalink || "").trim();
       if (!permalink) continue;
 
       const canonicalPermalink = canonicalizeReelUrl(permalink);
       if (!canonicalPermalink) continue;
+      const dedupeKey = mediaId || canonicalPermalink;
+      if (seenMediaKeys.has(dedupeKey)) continue;
+      seenMediaKeys.add(dedupeKey);
 
       const metrics = await getInstagramMetrics(accessToken, item);
       const publishedAt = normalizePublishedAt(item.timestamp);
@@ -190,7 +205,7 @@ module.exports = async function handler(req, res) {
         metrics.accounts_reached !== null;
       if (hasImportedMetrics) rowsWithImportedMetrics += 1;
 
-      const existing = existingByUrl.get(canonicalPermalink);
+      const existing = existingByMediaId.get(mediaId) || existingByUrl.get(canonicalPermalink);
       if (existing) {
         const currentViews = toNonNegativeInteger(existing.views);
         const currentLikes = toNonNegativeInteger(existing.likes);
@@ -206,6 +221,7 @@ module.exports = async function handler(req, res) {
           payload: {
             // Keep only a validated Instagram timestamp to avoid wrong "published" dates.
             published_at: publishedAt || existing.published_at || null,
+            instagram_media_id: mediaId || existing.instagram_media_id || null,
             views: Math.max(currentViews, metrics.views),
             likes: Math.max(currentLikes, metrics.likes),
             comments: Math.max(currentComments, metrics.comments),
@@ -226,6 +242,7 @@ module.exports = async function handler(req, res) {
         title: firstCaptionLine(item.caption, `Instagram post ${item.id}`),
         platform: "Instagram",
         published_at: publishedAt,
+        instagram_media_id: mediaId || null,
         storage_path: permalink,
         video_url: permalink,
         reel_type: reelType,

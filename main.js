@@ -78,6 +78,24 @@ function normalizeAverageWatchSeconds(value) {
   return Number(seconds.toFixed(2));
 }
 
+function normalizeInstagramToken(value) {
+  let token = String(value || "").trim();
+  if (!token) return "";
+
+  token = token
+    .replace(/^bearer\s+/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+
+  const tokenParamMatch = token.match(/(?:^|[?#&])access_token=([^&#]+)/i);
+  if (tokenParamMatch?.[1]) {
+    token = decodeURIComponent(tokenParamMatch[1]);
+  }
+
+  token = token.replace(/\s+/g, "");
+  return token;
+}
+
 function skipRateFromReel(reel) {
   const direct = parsePastedMetric(reel.this_reel_skip_rate, { percent: true });
   if (direct !== null) return direct;
@@ -191,7 +209,7 @@ function setSyncStatus(message, isError = false) {
 }
 
 function getInstagramToken() {
-  return String(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "").trim();
+  return normalizeInstagramToken(instagramTokenEl?.value || localStorage.getItem(IG_TOKEN_STORAGE_KEY) || "");
 }
 
 function setInstagramButtonsDisabled(isDisabled) {
@@ -862,7 +880,7 @@ refreshRankingBtn.addEventListener("click", async () => {
 });
 
 instagramTokenEl?.addEventListener("input", () => {
-  const value = String(instagramTokenEl.value || "").trim();
+  const value = normalizeInstagramToken(instagramTokenEl.value || "");
   if (value) {
     localStorage.setItem(IG_TOKEN_STORAGE_KEY, value);
   } else {
@@ -882,6 +900,9 @@ instagramSyncBtn?.addEventListener("click", async () => {
     setSyncStatus("Paste your Instagram user access token first.", true);
     instagramTokenEl?.focus();
     return;
+  }
+  if (instagramTokenEl && instagramTokenEl.value !== instagramToken) {
+    instagramTokenEl.value = instagramToken;
   }
 
   setInstagramButtonsDisabled(true);
@@ -1030,10 +1051,11 @@ logoutBtn.addEventListener("click", async () => {
 async function init() {
   clearLegacyOverlays();
   const savedToken = localStorage.getItem(IG_TOKEN_STORAGE_KEY);
-  if (savedToken && instagramTokenEl && !instagramTokenEl.value) {
-    instagramTokenEl.value = savedToken;
+  const normalizedSavedToken = normalizeInstagramToken(savedToken);
+  if (normalizedSavedToken && instagramTokenEl && !instagramTokenEl.value) {
+    instagramTokenEl.value = normalizedSavedToken;
   }
-  if (savedToken) {
+  if (normalizedSavedToken) {
     setSyncStatus("Token ready. Click Sync Posts Now.");
   } else {
     setSyncStatus("Paste Instagram user access token, then click Sync Posts Now.");

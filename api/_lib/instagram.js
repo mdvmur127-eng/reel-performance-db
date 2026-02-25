@@ -16,6 +16,11 @@ async function fetchJson(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS, timeout
   if (!response.ok || payload?.error) {
     const message =
       payload?.error?.message || payload?.message || payload?.error_description || `Request failed (${response.status}).`;
+    if (/cannot parse access token|invalid oauth access token/i.test(message)) {
+      throw new Error(
+        "Invalid Instagram token. Paste only the raw access token value (no Bearer, no quotes, no URL). If still failing, generate a new token.",
+      );
+    }
     throw new Error(message);
   }
 

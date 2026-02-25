@@ -33,6 +33,24 @@ function toOptionalPercent(value) {
   return normalizePercentValue(numeric);
 }
 
+function normalizeInstagramToken(value) {
+  let token = String(value || "").trim();
+  if (!token) return "";
+
+  token = token
+    .replace(/^bearer\s+/i, "")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+
+  const tokenParamMatch = token.match(/(?:^|[?#&])access_token=([^&#]+)/i);
+  if (tokenParamMatch?.[1]) {
+    token = decodeURIComponent(tokenParamMatch[1]);
+  }
+
+  token = token.replace(/\s+/g, "");
+  return token;
+}
+
 function firstCaptionLine(caption, fallback) {
   const first = String(caption || "").split("\n")[0].trim();
   return first || fallback;
@@ -109,7 +127,7 @@ module.exports = async function handler(req, res) {
     const user = await requireUser(req);
     const body = await readJsonBody(req).catch(() => ({}));
     const limit = clamp(Number(body?.limit) || 12, 1, 50);
-    const accessToken = String(body?.token || body?.instagramToken || "").trim();
+    const accessToken = normalizeInstagramToken(body?.token || body?.instagramToken || "");
     if (!accessToken) {
       return json(res, 400, { error: "Missing Instagram token. Paste a valid token and retry sync." });
     }

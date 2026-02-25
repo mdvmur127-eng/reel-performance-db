@@ -8,6 +8,16 @@ const {
   supabaseRest,
 } = require("../_lib/server");
 
+function appIdFromState(state) {
+  const parts = String(state || "").split(".");
+  if (parts.length < 2) return "";
+  try {
+    return Buffer.from(parts[parts.length - 1], "base64url").toString("utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 async function exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret }) {
   const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
   const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
@@ -62,11 +72,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID");
     const instagramClientSecret = envValue("INSTAGRAM_CLIENT_SECRET", "INSTAGRAM_APP_SECRET");
-    if (!instagramClientId || !instagramClientSecret) {
+    if (!instagramClientSecret) {
       throw new Error(
-        "Missing required Instagram credentials: INSTAGRAM_CLIENT_ID/INSTAGRAM_CLIENT_SECRET (or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET).",
+        "Missing required Instagram secret: INSTAGRAM_CLIENT_SECRET (or INSTAGRAM_APP_SECRET).",
       );
     }
 
@@ -121,6 +130,13 @@ module.exports = async function handler(req, res) {
     const redirectUri = process.env.INSTAGRAM_REDIRECT_URI || (requestOrigin ? `${requestOrigin}/api/instagram/callback` : "");
     if (!redirectUri) {
       throw new Error("Cannot determine OAuth redirect URI. Set INSTAGRAM_REDIRECT_URI in Vercel.");
+    }
+    const instagramClientId =
+      envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID") || appIdFromState(stateRow.state || state);
+    if (!instagramClientId) {
+      throw new Error(
+        "Missing Instagram App ID for token exchange. Set INSTAGRAM_CLIENT_ID in Vercel or reconnect using App ID override.",
+      );
     }
     const tokenResult = await exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret });
 

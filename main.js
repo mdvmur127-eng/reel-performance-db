@@ -14,6 +14,7 @@ const rankingEl = document.getElementById("ranking");
 const refreshRankingBtn = document.getElementById("refresh-ranking");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
+const instagramAppIdEl = document.getElementById("instagram-app-id");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
 const connectInstagramBtn = document.getElementById("connect-instagram-btn");
@@ -33,6 +34,7 @@ const recommendationPointsEl = document.getElementById("recommendation-points");
 const REQUEST_TIMEOUT_MS = 12000;
 const submitBtn = uploadForm?.querySelector('button[type="submit"]');
 const submitBtnDefaultLabel = submitBtn?.textContent || "Save Reel";
+const IG_APP_ID_STORAGE_KEY = "instagram_app_id_override";
 
 let currentUser = null;
 let cachedReels = [];
@@ -188,6 +190,10 @@ function setSyncStatus(message, isError = false) {
   if (!instagramSyncStatusEl) return;
   instagramSyncStatusEl.textContent = message;
   instagramSyncStatusEl.style.color = isError ? "var(--danger)" : "var(--muted)";
+}
+
+function getInstagramAppIdOverride() {
+  return String(instagramAppIdEl?.value || localStorage.getItem(IG_APP_ID_STORAGE_KEY) || "").trim();
 }
 
 function setInstagramButtonsDisabled(isDisabled) {
@@ -907,7 +913,11 @@ connectInstagramBtn?.addEventListener("click", async () => {
   setInstagramButtonsDisabled(true);
   setSyncStatus("Redirecting to Meta login...");
   try {
-    const data = await callInstagramApi("/connect", { method: "POST" });
+    const appIdOverride = getInstagramAppIdOverride();
+    const data = await callInstagramApi("/connect", {
+      method: "POST",
+      body: appIdOverride ? { appId: appIdOverride } : {},
+    });
     if (!data?.authUrl) {
       throw new Error("OAuth URL was not returned.");
     }
@@ -915,6 +925,15 @@ connectInstagramBtn?.addEventListener("click", async () => {
   } catch (error) {
     setInstagramButtonsDisabled(false);
     setSyncStatus(`Connect failed: ${error.message || "unknown error"}`, true);
+  }
+});
+
+instagramAppIdEl?.addEventListener("input", () => {
+  const value = String(instagramAppIdEl.value || "").trim();
+  if (value) {
+    localStorage.setItem(IG_APP_ID_STORAGE_KEY, value);
+  } else {
+    localStorage.removeItem(IG_APP_ID_STORAGE_KEY);
   }
 });
 
@@ -1094,6 +1113,10 @@ async function init() {
   }
 
   setInstagramButtonsDisabled(true);
+  const savedAppId = localStorage.getItem(IG_APP_ID_STORAGE_KEY);
+  if (savedAppId && instagramAppIdEl && !instagramAppIdEl.value) {
+    instagramAppIdEl.value = savedAppId;
+  }
   const user = await getUser().catch(() => null);
   if (!user) {
     window.location.href = "/index.html";

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260224r" />
+    <link rel="stylesheet" href="/styles.css?v=20260224s" />
   </head>
   <body>
     <main class="app">
@@ -34,6 +34,10 @@
             </div>
           </div>
           <div class="grid">
+            <label class="full">
+              Meta App ID (optional override)
+              <input id="instagram-app-id" name="instagram_app_id" inputmode="numeric" placeholder="If env is missing, paste App ID here" />
+            </label>
             <label>
               Import limit
               <input id="instagram-limit" name="instagram_limit" type="number" min="1" max="50" value="12" />
@@ -134,6 +138,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260224r"></script>
+    <script type="module" src="/main.js?v=20260224s"></script>
   </body>
 </html>

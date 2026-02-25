@@ -227,6 +227,12 @@ async function getAccessToken() {
 }
 
 async function callInstagramApi(path, { method = "GET", body } = {}) {
+  const timeoutMs =
+    path === "/sync"
+      ? 90000
+      : path === "/status"
+        ? 20000
+        : REQUEST_TIMEOUT_MS;
   const accessToken = await getAccessToken();
   const response = await withTimeout(
     fetch(`${INSTAGRAM_API_BASE}${path}`, {
@@ -237,8 +243,8 @@ async function callInstagramApi(path, { method = "GET", body } = {}) {
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }),
-    REQUEST_TIMEOUT_MS,
-    "Instagram API request timed out.",
+    timeoutMs,
+    "Instagram API request timed out. Try lower Import limit (e.g. 3-5) and retry.",
   );
 
   let payload = null;

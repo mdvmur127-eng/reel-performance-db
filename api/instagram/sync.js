@@ -56,6 +56,14 @@ function firstCaptionLine(caption, fallback) {
   return first || fallback;
 }
 
+function normalizePublishedAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const timestamp = new Date(raw).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString();
+}
+
 function stripColumns(row, droppedColumns) {
   if (!droppedColumns.size) return { ...row };
   const clone = { ...row };
@@ -170,6 +178,7 @@ module.exports = async function handler(req, res) {
       if (!canonicalPermalink) continue;
 
       const metrics = await getInstagramMetrics(accessToken, item);
+      const publishedAt = normalizePublishedAt(item.timestamp);
       const reelType = reelTypeFromMedia(item);
       const hasImportedMetrics =
         metrics.views > 0 ||
@@ -195,8 +204,8 @@ module.exports = async function handler(req, res) {
         updateRows.push({
           id: existing.id,
           payload: {
-            // Always prefer Instagram's media timestamp when available.
-            published_at: item.timestamp || existing.published_at || existing.created_at || null,
+            // Keep only a validated Instagram timestamp to avoid wrong "published" dates.
+            published_at: publishedAt || existing.published_at || null,
             views: Math.max(currentViews, metrics.views),
             likes: Math.max(currentLikes, metrics.likes),
             comments: Math.max(currentComments, metrics.comments),
@@ -216,7 +225,7 @@ module.exports = async function handler(req, res) {
         user_id: user.id,
         title: firstCaptionLine(item.caption, `Instagram post ${item.id}`),
         platform: "Instagram",
-        published_at: item.timestamp || null,
+        published_at: publishedAt,
         storage_path: permalink,
         video_url: permalink,
         reel_type: reelType,

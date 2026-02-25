@@ -152,17 +152,22 @@ function escapeHtml(value) {
 }
 
 function formatDate(iso) {
-  return new Date(iso).toLocaleString();
+  const date = new Date(iso);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "Not synced yet";
 }
 
 function reelPublishedAt(reel) {
+  const platform = String(reel.platform || "").toLowerCase();
+  if (platform.includes("instagram")) {
+    return reel.published_at || null;
+  }
   return reel.published_at || reel.created_at || null;
 }
 
 function reelPublishedTime(reel) {
   const value = reelPublishedAt(reel);
   const timestamp = value ? new Date(value).getTime() : Number.NaN;
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  return Number.isFinite(timestamp) ? timestamp : -1;
 }
 
 function sortReels(reelsWithScores) {

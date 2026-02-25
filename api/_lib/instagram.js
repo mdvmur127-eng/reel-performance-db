@@ -142,8 +142,24 @@ async function fetchInstagramMedia(userAccessToken, limit = 12) {
 
   const payload = await fetchJson(url.toString(), {}, REQUEST_TIMEOUT_MS, "Instagram media request timed out.");
   const items = Array.isArray(payload?.data) ? payload.data : [];
+  const withTimestamp = await Promise.all(
+    items.map(async (item) => {
+      if (item?.timestamp) return item;
+      const mediaId = String(item?.id || "").trim();
+      if (!mediaId) return item;
+      try {
+        const detailsUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${mediaId}`);
+        detailsUrl.searchParams.set("fields", "timestamp");
+        detailsUrl.searchParams.set("access_token", account.pageAccessToken);
+        const details = await fetchJson(detailsUrl.toString(), {}, 8000, "Instagram media details request timed out.");
+        return { ...item, timestamp: details?.timestamp || null };
+      } catch {
+        return item;
+      }
+    }),
+  );
 
-  return items.map((item) => ({
+  return withTimestamp.map((item) => ({
     ...item,
     _access_token: account.pageAccessToken,
     _ig_user_id: account.igUserId,

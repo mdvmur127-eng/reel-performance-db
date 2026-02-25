@@ -195,7 +195,8 @@ module.exports = async function handler(req, res) {
         updateRows.push({
           id: existing.id,
           payload: {
-            published_at: existing.published_at || item.timestamp || null,
+            // Always prefer Instagram's media timestamp when available.
+            published_at: item.timestamp || existing.published_at || existing.created_at || null,
             views: Math.max(currentViews, metrics.views),
             likes: Math.max(currentLikes, metrics.likes),
             comments: Math.max(currentComments, metrics.comments),

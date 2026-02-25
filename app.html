@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260225a" />
+    <link rel="stylesheet" href="/styles.css?v=20260225b" />
   </head>
   <body>
     <main class="app">
@@ -95,9 +95,14 @@
         </section>
 
         <section class="panel">
-          <div class="section-head">
-            <h2>Reels Database</h2>
-            <label class="insight-control">
+          <h2>Reels Database</h2>
+          <div class="reels-controls">
+            <div class="chip-row" aria-label="Reel type filters">
+              <button id="chip-all" class="chip active" type="button" data-kind="all">All</button>
+              <button id="chip-video" class="chip" type="button" data-kind="video">Videos</button>
+              <button id="chip-static" class="chip" type="button" data-kind="static">Static</button>
+            </div>
+            <label class="sort-control">
               Sort
               <select id="reels-sort">
                 <option value="published_desc">Published: Newest first</option>
@@ -108,11 +113,6 @@
                 <option value="views_asc">Views: Lowest first</option>
               </select>
             </label>
-          </div>
-          <div class="chip-row" aria-label="Reel type filters">
-            <button id="chip-all" class="chip active" type="button" data-kind="all">All</button>
-            <button id="chip-video" class="chip" type="button" data-kind="video">Videos</button>
-            <button id="chip-static" class="chip" type="button" data-kind="static">Static</button>
           </div>
           <div id="list" class="list"></div>
         </section>
@@ -153,6 +153,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260225a"></script>
+    <script type="module" src="/main.js?v=20260225b"></script>
   </body>
 </html>

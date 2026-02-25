@@ -195,6 +195,7 @@ module.exports = async function handler(req, res) {
         updateRows.push({
           id: existing.id,
           payload: {
+            published_at: existing.published_at || item.timestamp || null,
             views: Math.max(currentViews, metrics.views),
             likes: Math.max(currentLikes, metrics.likes),
             comments: Math.max(currentComments, metrics.comments),
@@ -214,6 +215,7 @@ module.exports = async function handler(req, res) {
         user_id: user.id,
         title: firstCaptionLine(item.caption, `Instagram post ${item.id}`),
         platform: "Instagram",
+        published_at: item.timestamp || null,
         storage_path: permalink,
         video_url: permalink,
         reel_type: reelType,

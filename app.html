@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260224u" />
+    <link rel="stylesheet" href="/styles.css?v=20260225a" />
   </head>
   <body>
     <main class="app">
@@ -95,7 +95,20 @@
         </section>
 
         <section class="panel">
-          <h2>Reels Database</h2>
+          <div class="section-head">
+            <h2>Reels Database</h2>
+            <label class="insight-control">
+              Sort
+              <select id="reels-sort">
+                <option value="published_desc">Published: Newest first</option>
+                <option value="published_asc">Published: Oldest first</option>
+                <option value="score_desc">Score: Highest first</option>
+                <option value="score_asc">Score: Lowest first</option>
+                <option value="views_desc">Views: Highest first</option>
+                <option value="views_asc">Views: Lowest first</option>
+              </select>
+            </label>
+          </div>
           <div class="chip-row" aria-label="Reel type filters">
             <button id="chip-all" class="chip active" type="button" data-kind="all">All</button>
             <button id="chip-video" class="chip" type="button" data-kind="video">Videos</button>
@@ -140,6 +153,6 @@
         </section>
       </div>
     </main>
-    <script type="module" src="/main.js?v=20260224u"></script>
+    <script type="module" src="/main.js?v=20260225a"></script>
   </body>
 </html>

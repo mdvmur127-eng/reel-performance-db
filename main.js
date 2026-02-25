@@ -18,6 +18,7 @@ const instagramTokenEl = document.getElementById("instagram-token");
 const instagramLimitEl = document.getElementById("instagram-limit");
 const instagramSyncBtn = document.getElementById("sync-instagram-btn");
 const instagramSyncStatusEl = document.getElementById("instagram-sync-status");
+const reelsSortEl = document.getElementById("reels-sort");
 const chipButtons = document.querySelectorAll(".chip");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const viewOverview = document.getElementById("view-overview");
@@ -37,6 +38,7 @@ const IG_TOKEN_STORAGE_KEY = "instagram_user_access_token";
 let currentUser = null;
 let cachedReels = [];
 let selectedKind = "all";
+let selectedSort = "published_desc";
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -151,6 +153,35 @@ function escapeHtml(value) {
 
 function formatDate(iso) {
   return new Date(iso).toLocaleString();
+}
+
+function reelPublishedAt(reel) {
+  return reel.published_at || reel.created_at || null;
+}
+
+function reelPublishedTime(reel) {
+  const value = reelPublishedAt(reel);
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortReels(reelsWithScores) {
+  const items = [...reelsWithScores];
+  switch (selectedSort) {
+    case "published_asc":
+      return items.sort((a, b) => reelPublishedTime(a) - reelPublishedTime(b));
+    case "score_desc":
+      return items.sort((a, b) => (b.rankScore || 0) - (a.rankScore || 0));
+    case "score_asc":
+      return items.sort((a, b) => (a.rankScore || 0) - (b.rankScore || 0));
+    case "views_desc":
+      return items.sort((a, b) => (Number(b.views) || 0) - (Number(a.views) || 0));
+    case "views_asc":
+      return items.sort((a, b) => (Number(a.views) || 0) - (Number(b.views) || 0));
+    case "published_desc":
+    default:
+      return items.sort((a, b) => reelPublishedTime(b) - reelPublishedTime(a));
+  }
 }
 
 function metricInput(name, value) {
@@ -592,6 +623,7 @@ async function render() {
 
   const visibleWithScores = visibleReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
   const ranked = [...visibleWithScores].sort((a, b) => b.rankScore - a.rankScore).slice(0, 5);
+  const sortedVisible = sortReels(visibleWithScores);
 
   rankingEl.innerHTML = ranked
     .map(
@@ -607,7 +639,7 @@ async function render() {
     )
     .join("");
 
-  const cards = visibleWithScores.map(
+  const cards = sortedVisible.map(
     (reel) => {
       const reelUrl = getReelUrl(reel);
       const reelKind = getReelKind(reel);
@@ -632,7 +664,7 @@ async function render() {
           <strong>${escapeHtml(reel.title)}</strong>
           <span class="meta">${escapeHtml(reel.platform)} • ${reelKind}</span>
         </div>
-        <div class="meta">Added: ${formatDate(reel.created_at)} • Score: ${reel.rankScore}</div>
+        <div class="meta">Published: ${formatDate(reelPublishedAt(reel))} • Score: ${reel.rankScore}</div>
         ${
           reelUrl
             ? `<a class="reel-url-link" href="${escapeHtml(reelUrl)}" target="_blank" rel="noopener noreferrer">Open Reel URL</a>`
@@ -853,6 +885,7 @@ uploadForm.addEventListener("submit", async (event) => {
       title,
       platform,
       storage_path: videoUrl,
+      published_at: new Date().toISOString(),
       reel_type: inferKindFromUrl(videoUrl),
       views: 0,
       likes: 0,
@@ -958,6 +991,11 @@ insightsMetricEl?.addEventListener("change", () => {
   const withScores = cachedReels.map((reel) => ({ ...reel, rankScore: score(reel) }));
   renderRecommendation(withScores);
   renderInsights(withScores);
+});
+
+reelsSortEl?.addEventListener("change", async () => {
+  selectedSort = reelsSortEl.value || "published_desc";
+  await render();
 });
 
 listEl.addEventListener("click", async (event) => {

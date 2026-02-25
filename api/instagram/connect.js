@@ -1,9 +1,9 @@
 const {
+  envValue,
   getOrigin,
   json,
   methodNotAllowed,
   randomState,
-  requireEnv,
   requireUser,
   supabaseRest,
 } = require("../_lib/server");
@@ -14,7 +14,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    requireEnv(["INSTAGRAM_CLIENT_ID", "SUPABASE_SERVICE_ROLE_KEY"]);
+    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID");
+    if (!instagramClientId) {
+      throw new Error("Missing required environment variable: INSTAGRAM_CLIENT_ID (or INSTAGRAM_APP_ID).");
+    }
     const user = await requireUser(req);
     const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
     const oauthScopes =
@@ -37,7 +40,7 @@ module.exports = async function handler(req, res) {
     }
 
     const authUrl = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
-    authUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
+    authUrl.searchParams.set("client_id", instagramClientId);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("scope", oauthScopes);

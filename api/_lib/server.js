@@ -1,10 +1,32 @@
 const crypto = require("crypto");
 
 const DEFAULT_SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
+
+function envValue(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+const SUPABASE_URL = envValue("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL") || DEFAULT_SUPABASE_URL;
 const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  envValue(
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_PUBLISHABLE_KEY",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+  ) || DEFAULT_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = envValue(
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_SERVICE_ROLE",
+  "SUPABASE_SERVICE_KEY",
+  "SUPABASE_SECRET_KEY",
+);
 const SUPABASE_AUTH_API_KEY = SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY;
 
 function json(res, statusCode, payload) {
@@ -83,15 +105,6 @@ async function readJsonBody(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function requireEnv(names) {
-  const missing = names.filter((name) => !process.env[name]);
-  if (missing.length) {
-    const error = new Error(`Missing required environment variables: ${missing.join(", ")}`);
-    error.statusCode = 500;
-    throw error;
-  }
-}
-
 function getQueryParam(req, key) {
   const raw = req.query?.[key];
   if (Array.isArray(raw)) return raw[0] || "";
@@ -144,7 +157,13 @@ async function requireUser(req) {
 }
 
 async function supabaseRest(table, { method = "GET", query = {}, body, prefer } = {}) {
-  requireEnv(["SUPABASE_SERVICE_ROLE_KEY"]);
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    const error = new Error(
+      "Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_ROLE / SUPABASE_SERVICE_KEY / SUPABASE_SECRET_KEY).",
+    );
+    error.statusCode = 500;
+    throw error;
+  }
 
   const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
   Object.entries(query || {}).forEach(([key, value]) => {
@@ -206,7 +225,7 @@ module.exports = {
   randomState,
   readJsonBody,
   redirectToApp,
-  requireEnv,
+  envValue,
   requireUser,
   supabaseRest,
   getRequestUrl,

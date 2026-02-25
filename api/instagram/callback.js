@@ -1,18 +1,18 @@
 const {
+  envValue,
   getOrigin,
   getQueryParam,
   json,
   methodNotAllowed,
   redirectToApp,
-  requireEnv,
   supabaseRest,
 } = require("../_lib/server");
 
-async function exchangeCodeForToken({ code, redirectUri }) {
+async function exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret }) {
   const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
   const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
-  tokenUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
-  tokenUrl.searchParams.set("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
+  tokenUrl.searchParams.set("client_id", instagramClientId);
+  tokenUrl.searchParams.set("client_secret", instagramClientSecret);
   tokenUrl.searchParams.set("redirect_uri", redirectUri);
   tokenUrl.searchParams.set("code", code);
 
@@ -31,8 +31,8 @@ async function exchangeCodeForToken({ code, redirectUri }) {
 
   const longLivedUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
   longLivedUrl.searchParams.set("grant_type", "fb_exchange_token");
-  longLivedUrl.searchParams.set("client_id", process.env.INSTAGRAM_CLIENT_ID);
-  longLivedUrl.searchParams.set("client_secret", process.env.INSTAGRAM_CLIENT_SECRET);
+  longLivedUrl.searchParams.set("client_id", instagramClientId);
+  longLivedUrl.searchParams.set("client_secret", instagramClientSecret);
   longLivedUrl.searchParams.set("fb_exchange_token", shortLivedToken);
 
   try {
@@ -62,11 +62,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    requireEnv([
-      "INSTAGRAM_CLIENT_ID",
-      "INSTAGRAM_CLIENT_SECRET",
-      "SUPABASE_SERVICE_ROLE_KEY",
-    ]);
+    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID");
+    const instagramClientSecret = envValue("INSTAGRAM_CLIENT_SECRET", "INSTAGRAM_APP_SECRET");
+    if (!instagramClientId || !instagramClientSecret) {
+      throw new Error(
+        "Missing required Instagram credentials: INSTAGRAM_CLIENT_ID/INSTAGRAM_CLIENT_SECRET (or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET).",
+      );
+    }
 
     const oauthError = getQueryParam(req, "error") || getQueryParam(req, "error_reason");
     const oauthErrorDescription = getQueryParam(req, "error_description");
@@ -120,7 +122,7 @@ module.exports = async function handler(req, res) {
     if (!redirectUri) {
       throw new Error("Cannot determine OAuth redirect URI. Set INSTAGRAM_REDIRECT_URI in Vercel.");
     }
-    const tokenResult = await exchangeCodeForToken({ code, redirectUri });
+    const tokenResult = await exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret });
 
     const expiresAt =
       tokenResult.expiresIn && tokenResult.expiresIn > 0

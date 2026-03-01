@@ -141,8 +141,9 @@ function clamp(value, min, max) {
 
 function normalizePercent(rawValue) {
   if (rawValue === null || rawValue === undefined || rawValue === "") return null;
-  const text = String(rawValue).replace("%", "").trim();
+  const text = String(rawValue).replace("%", "").replace(",", ".").trim();
   if (!text) return null;
+  if (text.endsWith(".") || text === "-" || text === "+") return null;
   const numeric = Number(text);
   if (!Number.isFinite(numeric)) return null;
   const percent = numeric <= 1 ? numeric * 100 : numeric;
@@ -165,7 +166,6 @@ function recomputeFollowerSplit() {
   }
 
   const nonFollowersPercent = roundPercent(100 - followersPercent);
-  followersInput.value = String(roundPercent(followersPercent));
   nonFollowersInput.value = String(nonFollowersPercent);
 }
 

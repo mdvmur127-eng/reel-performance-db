@@ -24,6 +24,7 @@ const secondsFieldsEl = document.getElementById("fields-seconds");
 let currentUser = null;
 let editId = null;
 let cachedRows = [];
+let activeAudienceTab = "gender";
 
 const BASIC_FIELDS = [
   { key: "published_at", label: "Date", type: "datetime-local", required: true },
@@ -323,9 +324,9 @@ function audienceRowsMarkup(prefix, rows, title) {
     .join("");
 
   return `
-    <section class="audience-block">
+    <section class="audience-block ${activeAudienceTab === prefix ? "is-active" : ""}" data-audience-panel="${prefix}">
       <div class="audience-block-head">
-        <span class="chip">${escapeHtml(title)}</span>
+        <span class="chip">${escapeHtml(title)} Breakdown</span>
       </div>
       <div class="audience-input-grid">${inputs}</div>
       ${bars ? `<div class="audience-bars">${bars}</div>` : ""}
@@ -333,19 +334,45 @@ function audienceRowsMarkup(prefix, rows, title) {
   `;
 }
 
+function genderBlockMarkup(menValue, womenValue) {
+  const men = clamp(Number(menValue) || 0, 0, 100);
+  const women = clamp(Number(womenValue) || 0, 0, 100);
+  return `
+    <section class="audience-block ${activeAudienceTab === "gender" ? "is-active" : ""}" data-audience-panel="gender">
+      <div class="audience-block-head">
+        <span class="chip">Gender Breakdown</span>
+      </div>
+      <div class="field-grid">
+        ${AUDIENCE_FIELDS.map((field) => inputMarkup(field, field.key === "audience_men" ? menValue : womenValue)).join("")}
+      </div>
+      <div class="audience-bars">
+        <div class="audience-bar-row">
+          <div class="audience-bar-label">Men</div>
+          <div class="audience-bar-track"><span class="audience-bar-fill" style="width:${escapeHtml(String(men))}%"></span></div>
+          <div class="audience-bar-value">${escapeHtml(String(roundPercent(men)))}%</div>
+        </div>
+        <div class="audience-bar-row">
+          <div class="audience-bar-label">Women</div>
+          <div class="audience-bar-track"><span class="audience-bar-fill" style="width:${escapeHtml(String(women))}%"></span></div>
+          <div class="audience-bar-value">${escapeHtml(String(roundPercent(women)))}%</div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderAudienceFields(sourceRow = null) {
   const valueFor = (key) => (sourceRow ? sourceRow[key] : "");
-  const menWomen = AUDIENCE_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
   const countryRows = parseBreakdown(valueFor("audience_country"));
   const ageRows = parseBreakdown(valueFor("audience_age"));
 
   audienceFieldsEl.innerHTML = `
     <div class="audience-chip-row">
-      <span class="chip chip-active">Gender</span>
-      <span class="chip">Country</span>
-      <span class="chip">Age</span>
+      <button class="chip ${activeAudienceTab === "gender" ? "chip-active" : ""}" type="button" data-audience-tab="gender">Gender</button>
+      <button class="chip ${activeAudienceTab === "audience_country" ? "chip-active" : ""}" type="button" data-audience-tab="audience_country">Country</button>
+      <button class="chip ${activeAudienceTab === "audience_age" ? "chip-active" : ""}" type="button" data-audience-tab="audience_age">Age</button>
     </div>
-    <div class="field-grid">${menWomen}</div>
+    ${genderBlockMarkup(valueFor("audience_men"), valueFor("audience_women"))}
     ${audienceRowsMarkup("audience_country", countryRows, "Country")}
     ${audienceRowsMarkup("audience_age", ageRows, "Age")}
   `;
@@ -360,6 +387,19 @@ function parseBreakdownFromForm(formData, prefix) {
     rows.push({ label, value: clamp(value, 0, 100) });
   }
   return rows;
+}
+
+function captureAudienceDraft() {
+  if (!formEl) return null;
+  const fd = new FormData(formEl);
+  const countryRows = parseBreakdownFromForm(fd, "audience_country");
+  const ageRows = parseBreakdownFromForm(fd, "audience_age");
+  return {
+    audience_men: fd.get("audience_men"),
+    audience_women: fd.get("audience_women"),
+    audience_country: countryRows.length ? JSON.stringify(countryRows) : null,
+    audience_age: ageRows.length ? JSON.stringify(ageRows) : null,
+  };
 }
 
 function buildPayloadFromForm(formData) {
@@ -653,6 +693,15 @@ async function init() {
     if (target.getAttribute("name") === "views_followers") {
       recomputeFollowerSplit();
     }
+  });
+  audienceFieldsEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const tab = target.getAttribute("data-audience-tab");
+    if (!tab) return;
+    const draft = captureAudienceDraft();
+    activeAudienceTab = tab;
+    renderAudienceFields(draft);
   });
   recomputeFollowerSplit();
   await refreshList();

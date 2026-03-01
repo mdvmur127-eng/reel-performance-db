@@ -190,6 +190,7 @@ label.field.full {
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+  align-items: center;
 }
 
 .chip {
@@ -204,6 +205,7 @@ label.field.full {
   background: var(--white);
   color: var(--navy);
   cursor: pointer;
+  min-height: 38px;
 }
 
 .chip-active {
@@ -226,6 +228,29 @@ label.field.full {
 
 .audience-block-head {
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audience-block-head .chip {
+  cursor: default;
+}
+
+.row-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tiny-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
 .audience-input-grid {

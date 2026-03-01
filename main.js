@@ -25,6 +25,11 @@ let currentUser = null;
 let editId = null;
 let cachedRows = [];
 let activeAudienceTab = "gender";
+let countryRowCount = 5;
+
+const AGE_GROUPS = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
+const MIN_COUNTRY_ROWS = 1;
+const MAX_COUNTRY_ROWS = 15;
 
 const BASIC_FIELDS = [
   { key: "published_at", label: "Date", type: "datetime-local", required: true },
@@ -74,7 +79,6 @@ const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
   label: `Retention at ${index}s (%)`,
   type: "number",
 }));
-const AUDIENCE_BREAKDOWN_ROWS = 8;
 
 const ALL_FIELDS = [...BASIC_FIELDS, ...PERFORMANCE_FIELDS, ...AUDIENCE_FIELDS, ...SECOND_FIELDS];
 
@@ -295,8 +299,9 @@ function parseBreakdown(rawValue) {
     .filter((item) => item.label && item.value !== null);
 }
 
-function audienceRowsMarkup(prefix, rows, title) {
-  const filledRows = Array.from({ length: AUDIENCE_BREAKDOWN_ROWS }, (_, idx) => rows[idx] || { label: "", value: "" });
+function countryRowsMarkup(rows) {
+  const totalRows = clamp(Math.max(countryRowCount, rows.length || 0), MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
+  const filledRows = Array.from({ length: totalRows }, (_, idx) => rows[idx] || { label: "", value: "" });
   const bars = rows
     .map((row) => {
       const pct = clamp(Number(row.value) || 0, 0, 100);
@@ -316,17 +321,66 @@ function audienceRowsMarkup(prefix, rows, title) {
     .map(
       (row, idx) => `
         <div class="audience-input-row">
-          <input type="text" name="${prefix}_label_${idx}" placeholder="${title} name" value="${escapeHtml(row.label || "")}" />
-          <input type="number" name="${prefix}_percent_${idx}" placeholder="%" step="any" min="0" max="100" value="${escapeHtml(row.value ?? "")}" />
+          <input type="text" name="audience_country_label_${idx}" placeholder="Country name" value="${escapeHtml(row.label || "")}" />
+          <input type="number" name="audience_country_percent_${idx}" placeholder="%" step="any" min="0" max="100" value="${escapeHtml(row.value ?? "")}" />
         </div>
       `,
     )
     .join("");
 
   return `
-    <section class="audience-block ${activeAudienceTab === prefix ? "is-active" : ""}" data-audience-panel="${prefix}">
+    <section class="audience-block ${activeAudienceTab === "audience_country" ? "is-active" : ""}" data-audience-panel="audience_country">
       <div class="audience-block-head">
-        <span class="chip">${escapeHtml(title)} Breakdown</span>
+        <span class="chip">Country Breakdown</span>
+        <div class="row-controls">
+          <button type="button" class="tiny-btn secondary" data-country-action="add">+ Add country</button>
+          <button type="button" class="tiny-btn secondary" data-country-action="remove">- Remove</button>
+        </div>
+      </div>
+      <div class="audience-input-grid">${inputs}</div>
+      ${bars ? `<div class="audience-bars">${bars}</div>` : ""}
+    </section>
+  `;
+}
+
+function ageRowsMarkup(rows) {
+  const existing = new Map(
+    rows
+      .map((row) => [row.label, row.value])
+      .filter((pair) => pair[0] && pair[1] !== null),
+  );
+  const normalizedRows = AGE_GROUPS.map((label) => ({ label, value: existing.get(label) ?? "" }));
+  const bars = normalizedRows
+    .filter((row) => row.value !== "" && row.value !== null)
+    .map((row) => {
+      const pct = clamp(Number(row.value) || 0, 0, 100);
+      return `
+        <div class="audience-bar-row">
+          <div class="audience-bar-label">${escapeHtml(row.label)}</div>
+          <div class="audience-bar-track">
+            <span class="audience-bar-fill" style="width:${escapeHtml(String(pct))}%"></span>
+          </div>
+          <div class="audience-bar-value">${escapeHtml(String(roundPercent(pct)))}%</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const inputs = normalizedRows
+    .map(
+      (row, idx) => `
+        <div class="audience-input-row">
+          <input type="text" name="audience_age_label_${idx}" value="${escapeHtml(row.label)}" readonly />
+          <input type="number" name="audience_age_percent_${idx}" placeholder="%" step="any" min="0" max="100" value="${escapeHtml(row.value ?? "")}" />
+        </div>
+      `,
+    )
+    .join("");
+
+  return `
+    <section class="audience-block ${activeAudienceTab === "audience_age" ? "is-active" : ""}" data-audience-panel="audience_age">
+      <div class="audience-block-head">
+        <span class="chip">Age Breakdown</span>
       </div>
       <div class="audience-input-grid">${inputs}</div>
       ${bars ? `<div class="audience-bars">${bars}</div>` : ""}
@@ -365,6 +419,7 @@ function renderAudienceFields(sourceRow = null) {
   const valueFor = (key) => (sourceRow ? sourceRow[key] : "");
   const countryRows = parseBreakdown(valueFor("audience_country"));
   const ageRows = parseBreakdown(valueFor("audience_age"));
+  countryRowCount = clamp(Math.max(MIN_COUNTRY_ROWS, countryRows.length || countryRowCount), MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
 
   audienceFieldsEl.innerHTML = `
     <div class="audience-chip-row">
@@ -373,14 +428,15 @@ function renderAudienceFields(sourceRow = null) {
       <button class="chip ${activeAudienceTab === "audience_age" ? "chip-active" : ""}" type="button" data-audience-tab="audience_age">Age</button>
     </div>
     ${genderBlockMarkup(valueFor("audience_men"), valueFor("audience_women"))}
-    ${audienceRowsMarkup("audience_country", countryRows, "Country")}
-    ${audienceRowsMarkup("audience_age", ageRows, "Age")}
+    ${countryRowsMarkup(countryRows)}
+    ${ageRowsMarkup(ageRows)}
   `;
 }
 
 function parseBreakdownFromForm(formData, prefix) {
   const rows = [];
-  for (let index = 0; index < AUDIENCE_BREAKDOWN_ROWS; index += 1) {
+  const totalRows = prefix === "audience_age" ? AGE_GROUPS.length : countryRowCount;
+  for (let index = 0; index < totalRows; index += 1) {
     const label = String(formData.get(`${prefix}_label_${index}`) || "").trim();
     const value = toNumberOrNull(formData.get(`${prefix}_percent_${index}`));
     if (!label || value === null) continue;
@@ -698,8 +754,18 @@ async function init() {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const tab = target.getAttribute("data-audience-tab");
-    if (!tab) return;
+    const countryAction = target.getAttribute("data-country-action");
     const draft = captureAudienceDraft();
+    if (countryAction) {
+      if (countryAction === "add") {
+        countryRowCount = clamp(countryRowCount + 1, MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
+      } else if (countryAction === "remove") {
+        countryRowCount = clamp(countryRowCount - 1, MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
+      }
+      renderAudienceFields(draft);
+      return;
+    }
+    if (!tab) return;
     activeAudienceTab = tab;
     renderAudienceFields(draft);
   });

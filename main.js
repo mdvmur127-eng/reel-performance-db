@@ -67,8 +67,8 @@ const PERFORMANCE_FIELDS = [
 ];
 
 const AUDIENCE_FIELDS = [
-  { key: "audience_men", label: "Audience (Men %)", type: "number", placeholder: "0-100" },
-  { key: "audience_women", label: "Audience (Women %)", type: "number", placeholder: "Auto", readonly: true },
+  { key: "audience_men", label: "Audience (Men ratio)", type: "number", placeholder: "e.g. 0.55", step: "0.01" },
+  { key: "audience_women", label: "Audience (Women ratio)", type: "number", placeholder: "Auto", readonly: true, step: "0.01" },
 ];
 
 const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
@@ -154,6 +154,23 @@ function roundPercent(value) {
   return Math.round(value * 100) / 100;
 }
 
+function normalizeSexRatio(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === "") return null;
+  const text = String(rawValue).replace("%", "").replace(",", ".").trim();
+  if (!text) return null;
+  if (text.endsWith(".") || text === "-" || text === "+") return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric)) return null;
+  const ratio = numeric > 1 ? numeric / 100 : numeric;
+  return clamp(ratio, 0, 1);
+}
+
+function formatRatio(value) {
+  const ratio = normalizeSexRatio(value);
+  if (ratio === null) return "";
+  return String(Math.round(ratio * 10000) / 10000);
+}
+
 function recomputeFollowerSplit() {
   const followersInput = formEl?.elements?.namedItem("views_followers");
   const nonFollowersInput = formEl?.elements?.namedItem("views_non_followers");
@@ -186,16 +203,18 @@ function recomputeGenderSplit() {
   const womenInput = formEl?.elements?.namedItem("audience_women");
   if (!(menInput instanceof HTMLInputElement) || !(womenInput instanceof HTMLInputElement)) return;
 
-  const menPercent = normalizePercent(menInput.value);
-  if (menPercent === null) {
+  const menRatio = normalizeSexRatio(menInput.value);
+  if (menRatio === null) {
     womenInput.value = "";
     updateGenderPreview(0, 0);
     return;
   }
 
-  const womenPercent = roundPercent(100 - menPercent);
-  menInput.value = String(roundPercent(menPercent));
-  womenInput.value = String(womenPercent);
+  const womenRatio = Math.max(0, 1 - menRatio);
+  const menPercent = roundPercent(menRatio * 100);
+  const womenPercent = roundPercent(womenRatio * 100);
+  menInput.value = formatRatio(menRatio);
+  womenInput.value = formatRatio(womenRatio);
   updateGenderPreview(menPercent, womenPercent);
 }
 
@@ -239,6 +258,8 @@ function inputMarkup(field, value = "") {
   const safeValue =
     field.type === "datetime-local"
       ? toDatetimeLocalValue(raw)
+      : field.key === "audience_men" || field.key === "audience_women"
+        ? formatRatio(raw)
       : field.key === "watch_time" || field.key === "duration"
         ? formatSeconds(raw)
         : String(raw);
@@ -280,7 +301,7 @@ function inputMarkup(field, value = "") {
         placeholder="${escapeHtml(field.placeholder || "")}"
         ${field.required ? "required" : ""}
         ${field.readonly ? "readonly" : ""}
-        ${field.type === "number" ? 'step="any"' : ""}
+        ${field.type === "number" ? `step="${escapeHtml(field.step || "any")}"` : ""}
       />
     </label>
   `;
@@ -416,8 +437,8 @@ function ageRowsMarkup(rows) {
 }
 
 function genderBlockMarkup(menValue, womenValue) {
-  const menParsed = normalizePercent(menValue);
-  const men = menParsed === null ? 0 : menParsed;
+  const menRatio = normalizeSexRatio(menValue);
+  const men = menRatio === null ? 0 : menRatio * 100;
   const women = roundPercent(100 - men);
   return `
     <section class="audience-block ${activeAudienceTab === "gender" ? "is-active" : ""}" data-audience-panel="gender">
@@ -478,10 +499,10 @@ function captureAudienceDraft() {
   const fd = new FormData(formEl);
   const countryRows = parseBreakdownFromForm(fd, "audience_country");
   const ageRows = parseBreakdownFromForm(fd, "audience_age");
-  const menPercent = normalizePercent(fd.get("audience_men"));
+  const menRatio = normalizeSexRatio(fd.get("audience_men"));
   return {
-    audience_men: menPercent === null ? null : menPercent,
-    audience_women: menPercent === null ? null : roundPercent(100 - menPercent),
+    audience_men: menRatio === null ? null : menRatio,
+    audience_women: menRatio === null ? null : Math.max(0, 1 - menRatio),
     audience_country: countryRows.length ? JSON.stringify(countryRows) : null,
     audience_age: ageRows.length ? JSON.stringify(ageRows) : null,
   };
@@ -504,12 +525,12 @@ function buildPayloadFromForm(formData) {
         continue;
       }
       if (field.key === "audience_men") {
-        payload.audience_men = normalizePercent(rawValue);
+        payload.audience_men = normalizeSexRatio(rawValue);
         continue;
       }
       if (field.key === "audience_women") {
-        const menPercent = normalizePercent(formData.get("audience_men"));
-        payload.audience_women = menPercent === null ? null : roundPercent(100 - menPercent);
+        const menRatio = normalizeSexRatio(formData.get("audience_men"));
+        payload.audience_women = menRatio === null ? null : Math.max(0, 1 - menRatio);
         continue;
       }
       payload[field.key] = toNumberOrNull(rawValue);
@@ -536,6 +557,12 @@ function buildPayloadFromForm(formData) {
   const ageRows = parseBreakdownFromForm(formData, "audience_age");
   payload.audience_country = countryRows.length ? JSON.stringify(countryRows) : null;
   payload.audience_age = ageRows.length ? JSON.stringify(ageRows) : null;
+
+  for (const metric of ["views", "likes", "comments", "saves", "shares", "follows", "accounts_reached"]) {
+    if (payload[metric] === null || payload[metric] === undefined) {
+      payload[metric] = 0;
+    }
+  }
 
   return payload;
 }
@@ -796,8 +823,10 @@ async function init() {
   audienceFieldsEl.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const tab = target.getAttribute("data-audience-tab");
-    const countryAction = target.getAttribute("data-country-action");
+    const tabNode = target.closest("[data-audience-tab]");
+    const actionNode = target.closest("[data-country-action]");
+    const tab = tabNode?.getAttribute("data-audience-tab");
+    const countryAction = actionNode?.getAttribute("data-country-action");
     const draft = captureAudienceDraft();
     if (countryAction) {
       if (countryAction === "add") {

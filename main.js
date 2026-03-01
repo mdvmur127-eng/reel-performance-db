@@ -60,9 +60,6 @@ const PERFORMANCE_FIELDS = [
   { key: "follows", label: "Follows", type: "number" },
   { key: "views_followers", label: "Views (Followers %)", type: "number", placeholder: "e.g. 0.5 or 50" },
   { key: "views_non_followers", label: "Views (Non-followers %)", type: "number", readonly: true },
-  { key: "views_over_time_all", label: "Views over time (All)", type: "textarea", full: true },
-  { key: "views_over_time_followers", label: "Views over time (Followers)", type: "textarea", full: true },
-  { key: "views_over_time_non_followers", label: "Views over time (Non-followers)", type: "textarea", full: true },
   { key: "accounts_reached", label: "Accounts Reached", type: "number" },
   { key: "reel_skip_rate", label: "This reel's skip rate", type: "number" },
   { key: "typical_skip_rate", label: "Typical skip rate", type: "number" },
@@ -71,7 +68,7 @@ const PERFORMANCE_FIELDS = [
 
 const AUDIENCE_FIELDS = [
   { key: "audience_men", label: "Audience (Men %)", type: "number", placeholder: "0-100" },
-  { key: "audience_women", label: "Audience (Women %)", type: "number", placeholder: "0-100" },
+  { key: "audience_women", label: "Audience (Women %)", type: "number", placeholder: "Auto", readonly: true },
 ];
 
 const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
@@ -170,6 +167,36 @@ function recomputeFollowerSplit() {
 
   const nonFollowersPercent = roundPercent(100 - followersPercent);
   nonFollowersInput.value = String(nonFollowersPercent);
+}
+
+function updateGenderPreview(menPercent, womenPercent) {
+  const menFill = audienceFieldsEl?.querySelector('[data-gender-fill="men"]');
+  const womenFill = audienceFieldsEl?.querySelector('[data-gender-fill="women"]');
+  const menValue = audienceFieldsEl?.querySelector('[data-gender-value="men"]');
+  const womenValue = audienceFieldsEl?.querySelector('[data-gender-value="women"]');
+
+  if (menFill instanceof HTMLElement) menFill.style.width = `${clamp(menPercent, 0, 100)}%`;
+  if (womenFill instanceof HTMLElement) womenFill.style.width = `${clamp(womenPercent, 0, 100)}%`;
+  if (menValue instanceof HTMLElement) menValue.textContent = `${roundPercent(clamp(menPercent, 0, 100))}%`;
+  if (womenValue instanceof HTMLElement) womenValue.textContent = `${roundPercent(clamp(womenPercent, 0, 100))}%`;
+}
+
+function recomputeGenderSplit() {
+  const menInput = formEl?.elements?.namedItem("audience_men");
+  const womenInput = formEl?.elements?.namedItem("audience_women");
+  if (!(menInput instanceof HTMLInputElement) || !(womenInput instanceof HTMLInputElement)) return;
+
+  const menPercent = normalizePercent(menInput.value);
+  if (menPercent === null) {
+    womenInput.value = "";
+    updateGenderPreview(0, 0);
+    return;
+  }
+
+  const womenPercent = roundPercent(100 - menPercent);
+  menInput.value = String(roundPercent(menPercent));
+  womenInput.value = String(womenPercent);
+  updateGenderPreview(menPercent, womenPercent);
 }
 
 function parseTimeToSeconds(rawValue) {
@@ -389,8 +416,9 @@ function ageRowsMarkup(rows) {
 }
 
 function genderBlockMarkup(menValue, womenValue) {
-  const men = clamp(Number(menValue) || 0, 0, 100);
-  const women = clamp(Number(womenValue) || 0, 0, 100);
+  const menParsed = normalizePercent(menValue);
+  const men = menParsed === null ? 0 : menParsed;
+  const women = roundPercent(100 - men);
   return `
     <section class="audience-block ${activeAudienceTab === "gender" ? "is-active" : ""}" data-audience-panel="gender">
       <div class="audience-block-head">
@@ -402,13 +430,13 @@ function genderBlockMarkup(menValue, womenValue) {
       <div class="audience-bars">
         <div class="audience-bar-row">
           <div class="audience-bar-label">Men</div>
-          <div class="audience-bar-track"><span class="audience-bar-fill" style="width:${escapeHtml(String(men))}%"></span></div>
-          <div class="audience-bar-value">${escapeHtml(String(roundPercent(men)))}%</div>
+          <div class="audience-bar-track"><span class="audience-bar-fill" data-gender-fill="men" style="width:${escapeHtml(String(men))}%"></span></div>
+          <div class="audience-bar-value" data-gender-value="men">${escapeHtml(String(roundPercent(men)))}%</div>
         </div>
         <div class="audience-bar-row">
           <div class="audience-bar-label">Women</div>
-          <div class="audience-bar-track"><span class="audience-bar-fill" style="width:${escapeHtml(String(women))}%"></span></div>
-          <div class="audience-bar-value">${escapeHtml(String(roundPercent(women)))}%</div>
+          <div class="audience-bar-track"><span class="audience-bar-fill" data-gender-fill="women" style="width:${escapeHtml(String(women))}%"></span></div>
+          <div class="audience-bar-value" data-gender-value="women">${escapeHtml(String(roundPercent(women)))}%</div>
         </div>
       </div>
     </section>
@@ -450,9 +478,10 @@ function captureAudienceDraft() {
   const fd = new FormData(formEl);
   const countryRows = parseBreakdownFromForm(fd, "audience_country");
   const ageRows = parseBreakdownFromForm(fd, "audience_age");
+  const menPercent = normalizePercent(fd.get("audience_men"));
   return {
-    audience_men: fd.get("audience_men"),
-    audience_women: fd.get("audience_women"),
+    audience_men: menPercent === null ? null : menPercent,
+    audience_women: menPercent === null ? null : roundPercent(100 - menPercent),
     audience_country: countryRows.length ? JSON.stringify(countryRows) : null,
     audience_age: ageRows.length ? JSON.stringify(ageRows) : null,
   };
@@ -472,6 +501,15 @@ function buildPayloadFromForm(formData) {
       if (field.key === "views_non_followers") {
         const followersPercent = normalizePercent(formData.get("views_followers"));
         payload.views_non_followers = followersPercent === null ? null : roundPercent(100 - followersPercent);
+        continue;
+      }
+      if (field.key === "audience_men") {
+        payload.audience_men = normalizePercent(rawValue);
+        continue;
+      }
+      if (field.key === "audience_women") {
+        const menPercent = normalizePercent(formData.get("audience_men"));
+        payload.audience_women = menPercent === null ? null : roundPercent(100 - menPercent);
         continue;
       }
       payload[field.key] = toNumberOrNull(rawValue);
@@ -551,6 +589,7 @@ function resetForm() {
   cancelEditBtn.classList.add("hidden");
   renderFormFields(null);
   recomputeFollowerSplit();
+  recomputeGenderSplit();
   setSaving(false);
 }
 
@@ -560,6 +599,7 @@ function startEdit(row) {
   cancelEditBtn.classList.remove("hidden");
   renderFormFields(row);
   recomputeFollowerSplit();
+  recomputeGenderSplit();
   setSaving(false);
   formEl.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -749,6 +789,9 @@ async function init() {
     if (target.getAttribute("name") === "views_followers") {
       recomputeFollowerSplit();
     }
+    if (target.getAttribute("name") === "audience_men") {
+      recomputeGenderSplit();
+    }
   });
   audienceFieldsEl.addEventListener("click", (event) => {
     const target = event.target;
@@ -763,13 +806,16 @@ async function init() {
         countryRowCount = clamp(countryRowCount - 1, MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
       }
       renderAudienceFields(draft);
+      recomputeGenderSplit();
       return;
     }
     if (!tab) return;
     activeAudienceTab = tab;
     renderAudienceFields(draft);
+    recomputeGenderSplit();
   });
   recomputeFollowerSplit();
+  recomputeGenderSplit();
   await refreshList();
 }
 

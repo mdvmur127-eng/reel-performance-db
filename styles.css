@@ -26,9 +26,9 @@ body {
   max-width: 1400px;
   margin: 0 auto;
   min-height: 100vh;
-  padding: 28px 24px 44px;
+  padding: 18px 18px 28px;
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .top,
@@ -36,7 +36,7 @@ body {
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 24px;
+  padding: 16px;
 }
 
 .top {
@@ -75,7 +75,7 @@ h2 {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .meta {
@@ -99,14 +99,15 @@ input,
 select,
 textarea {
   width: 100%;
-  padding: 10px;
-  border-radius: 10px;
+  padding: 7px 9px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--white);
+  font-size: 13px;
 }
 
 textarea {
-  min-height: 84px;
+  min-height: 64px;
   resize: vertical;
 }
 
@@ -124,14 +125,15 @@ input[readonly] {
 }
 
 button {
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--gold);
   background: var(--gold);
   color: var(--black);
-  padding: 10px 16px;
+  padding: 7px 12px;
   font-weight: 600;
   cursor: pointer;
-  min-height: 42px;
+  min-height: 34px;
+  font-size: 13px;
 }
 
 button.secondary {
@@ -147,25 +149,25 @@ button:disabled {
 
 .form-grid {
   display: grid;
-  gap: 16px;
+  gap: 10px;
 }
 
 .field-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 8px;
 }
 
 .seconds-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
 }
 
 label.field {
   display: grid;
-  gap: 6px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 12px;
 }
 
 label.field.full {
@@ -175,7 +177,7 @@ label.field.full {
 .details {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  padding: 8px;
   background: rgba(30, 42, 56, 0.02);
 }
 
@@ -187,9 +189,9 @@ label.field.full {
 
 .audience-chip-row {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   align-items: center;
 }
 
@@ -199,13 +201,13 @@ label.field.full {
   justify-content: center;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 13px;
+  padding: 6px 10px;
+  font-size: 12px;
   font-weight: 600;
   background: var(--white);
   color: var(--navy);
   cursor: pointer;
-  min-height: 38px;
+  min-height: 32px;
 }
 
 .chip-active {
@@ -214,10 +216,10 @@ label.field.full {
 }
 
 .audience-block {
-  margin-top: 14px;
+  margin-top: 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px;
+  padding: 8px;
   background: rgba(30, 42, 56, 0.02);
   display: none;
 }
@@ -255,27 +257,27 @@ label.field.full {
 
 .audience-input-grid {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .audience-input-row {
   display: grid;
   grid-template-columns: 1fr 120px;
-  gap: 8px;
+  gap: 6px;
 }
 
 .audience-bars {
-  margin-top: 12px;
+  margin-top: 8px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .audience-bar-row {
   display: grid;
   grid-template-columns: minmax(140px, 220px) minmax(160px, 1fr) 72px;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .audience-bar-label,
@@ -299,6 +301,7 @@ label.field.full {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .list {
@@ -332,9 +335,9 @@ label.field.full {
 .reels-table td {
   text-align: left;
   vertical-align: middle;
-  padding: 10px 12px;
+  padding: 7px 9px;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -370,8 +373,8 @@ label.field.full {
 }
 
 .row-btn {
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: 30px;
+  padding: 4px 8px;
   border-radius: 8px;
   font-size: 12px;
 }
@@ -406,11 +409,11 @@ label.field.full {
 
 @media (max-width: 960px) {
   .field-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .seconds-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   h1 {

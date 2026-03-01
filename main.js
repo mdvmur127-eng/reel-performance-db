@@ -29,9 +29,20 @@ const BASIC_FIELDS = [
   { key: "published_at", label: "Date", type: "datetime-local", required: true },
   { key: "title", label: "Title", type: "text", required: true },
   { key: "url", label: "URL", type: "url", required: true, full: true },
-  { key: "watch_time", label: "Watch Time", type: "number" },
-  { key: "duration", label: "Duration", type: "number" },
-  { key: "top_source_of_views", label: "Top source of views", type: "text" },
+  { key: "watch_time", label: "Watch Time (mm:ss)", type: "text", placeholder: "08:40" },
+  { key: "duration", label: "Duration (mm:ss)", type: "text", placeholder: "00:51" },
+  {
+    key: "top_source_of_views",
+    label: "Top source of views",
+    type: "select",
+    options: [
+      { value: "", label: "Select source" },
+      { value: "Reels Tab", label: "Reels Tab" },
+      { value: "Explore", label: "Explore" },
+      { value: "Feed", label: "Feed" },
+      { value: "Profile", label: "Profile" },
+    ],
+  },
 ];
 
 const PERFORMANCE_FIELDS = [
@@ -61,7 +72,7 @@ const AUDIENCE_FIELDS = [
 
 const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
   key: `sec_${index}`,
-  label: `sec_${index}`,
+  label: `Retention at ${index}s (%)`,
   type: "number",
 }));
 
@@ -124,15 +135,73 @@ function toDisplayDate(value) {
   return date.toLocaleString();
 }
 
+function parseTimeToSeconds(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) return null;
+
+  if (value.includes(":")) {
+    const parts = value.split(":").map((part) => Number(part));
+    if (parts.length !== 2 || parts.some((part) => !Number.isFinite(part))) return null;
+    const [minutes, seconds] = parts;
+    if (minutes < 0 || seconds < 0 || seconds > 59) return null;
+    return Math.round(minutes * 60 + seconds);
+  }
+
+  const digitsOnly = value.replace(/\D/g, "");
+  if (!digitsOnly) return null;
+  if (digitsOnly.length >= 3) {
+    const seconds = Number(digitsOnly.slice(-2));
+    const minutes = Number(digitsOnly.slice(0, -2));
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || seconds > 59) return null;
+    return Math.round(minutes * 60 + seconds);
+  }
+
+  const numeric = Number(digitsOnly);
+  return Number.isFinite(numeric) ? Math.round(numeric) : null;
+}
+
+function formatSeconds(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const total = Math.max(0, Math.round(numeric));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function inputMarkup(field, value = "") {
   const raw = value === null || value === undefined ? "" : value;
-  const safeValue = field.type === "datetime-local" ? toDatetimeLocalValue(raw) : String(raw);
+  const safeValue =
+    field.type === "datetime-local"
+      ? toDatetimeLocalValue(raw)
+      : field.key === "watch_time" || field.key === "duration"
+        ? formatSeconds(raw)
+        : String(raw);
 
   if (field.type === "textarea") {
     return `
       <label class="field ${field.full ? "full" : ""}">
         <span>${escapeHtml(field.label)}</span>
         <textarea name="${escapeHtml(field.key)}" ${field.required ? "required" : ""}>${escapeHtml(safeValue)}</textarea>
+      </label>
+    `;
+  }
+
+  if (field.type === "select") {
+    const current = String(safeValue || "");
+    const options = (field.options || [])
+      .map((option) => {
+        const selected = option.value === current ? "selected" : "";
+        return `<option value="${escapeHtml(option.value)}" ${selected}>${escapeHtml(option.label)}</option>`;
+      })
+      .join("");
+    return `
+      <label class="field ${field.full ? "full" : ""}">
+        <span>${escapeHtml(field.label)}</span>
+        <select name="${escapeHtml(field.key)}" ${field.required ? "required" : ""}>
+          ${options}
+        </select>
       </label>
     `;
   }
@@ -144,6 +213,7 @@ function inputMarkup(field, value = "") {
         name="${escapeHtml(field.key)}"
         type="${escapeHtml(field.type || "text")}" 
         value="${escapeHtml(safeValue)}"
+        placeholder="${escapeHtml(field.placeholder || "")}"
         ${field.required ? "required" : ""}
         ${field.type === "number" ? 'step="any"' : ""}
       />
@@ -174,6 +244,12 @@ function buildPayloadFromForm(formData) {
     if (field.type === "datetime-local") {
       const text = String(rawValue || "").trim();
       payload[field.key] = text ? new Date(text).toISOString() : null;
+      continue;
+    }
+
+    if (field.key === "watch_time" || field.key === "duration") {
+      const parsed = parseTimeToSeconds(rawValue);
+      payload[field.key] = parsed;
       continue;
     }
 
@@ -254,6 +330,64 @@ async function refreshList() {
   }
 }
 
+function parseMissingColumn(errorMessage) {
+  const message = String(errorMessage || "");
+  const match = message.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] || "";
+}
+
+async function insertWithMissingColumnFallback(row) {
+  const payload = { ...row };
+  const removedColumns = [];
+  const attempted = new Set();
+
+  while (true) {
+    const { error } = await withTimeout(
+      supabase.from(REELS_TABLE).insert([payload]),
+      REQUEST_TIMEOUT_MS,
+      "Insert timed out",
+    );
+    if (!error) return removedColumns;
+
+    const missingColumn = parseMissingColumn(error.message);
+    if (!missingColumn || attempted.has(missingColumn)) throw error;
+
+    attempted.add(missingColumn);
+    if (Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+      delete payload[missingColumn];
+      removedColumns.push(missingColumn);
+      continue;
+    }
+    throw error;
+  }
+}
+
+async function updateWithMissingColumnFallback(id, userId, row) {
+  const payload = { ...row };
+  const removedColumns = [];
+  const attempted = new Set();
+
+  while (true) {
+    const { error } = await withTimeout(
+      supabase.from(REELS_TABLE).update(payload).eq("id", id).eq("user_id", userId),
+      REQUEST_TIMEOUT_MS,
+      "Update timed out",
+    );
+    if (!error) return removedColumns;
+
+    const missingColumn = parseMissingColumn(error.message);
+    if (!missingColumn || attempted.has(missingColumn)) throw error;
+
+    attempted.add(missingColumn);
+    if (Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+      delete payload[missingColumn];
+      removedColumns.push(missingColumn);
+      continue;
+    }
+    throw error;
+  }
+}
+
 formEl.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentUser) {
@@ -278,22 +412,17 @@ formEl.addEventListener("submit", async (event) => {
       ...payload,
     };
 
-    if (editId) {
-      const { error } = await withTimeout(
-        supabase.from(REELS_TABLE).update(row).eq("id", editId).eq("user_id", currentUser.id),
-        REQUEST_TIMEOUT_MS,
-        "Update timed out",
+    const removedColumns = editId
+      ? await updateWithMissingColumnFallback(editId, currentUser.id, row)
+      : await insertWithMissingColumnFallback(row);
+
+    if (removedColumns.length) {
+      setStatus(
+        `Saved, but schema is missing columns: ${removedColumns.join(", ")}. Run SQL migration to persist them.`,
+        true,
       );
-      if (error) throw error;
-      setStatus("Reel updated.");
     } else {
-      const { error } = await withTimeout(
-        supabase.from(REELS_TABLE).insert([row]),
-        REQUEST_TIMEOUT_MS,
-        "Insert timed out",
-      );
-      if (error) throw error;
-      setStatus("Reel saved.");
+      setStatus(editId ? "Reel updated." : "Reel saved.");
     }
 
     resetForm();

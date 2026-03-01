@@ -89,12 +89,14 @@ h2 {
 }
 
 input,
+select,
 textarea,
 button {
   font: inherit;
 }
 
 input,
+select,
 textarea {
   width: 100%;
   padding: 10px;
@@ -109,6 +111,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   outline: 2px solid rgba(245, 166, 34, 0.35);
   outline-offset: 1px;

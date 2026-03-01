@@ -52,7 +52,7 @@ const PERFORMANCE_FIELDS = [
   { key: "saves", label: "Saves", type: "number" },
   { key: "shares", label: "Shares", type: "number" },
   { key: "follows", label: "Follows", type: "number" },
-  { key: "views_followers", label: "Views (Followers %)", type: "number", placeholder: "e.g. 50 or 0.5" },
+  { key: "views_followers", label: "Views (Followers %)", type: "number", placeholder: "e.g. 0.5 or 50" },
   { key: "views_non_followers", label: "Views (Non-followers %)", type: "number", readonly: true },
   { key: "views_over_time_all", label: "Views over time (All)", type: "textarea", full: true },
   { key: "views_over_time_followers", label: "Views over time (Followers)", type: "textarea", full: true },
@@ -146,8 +146,7 @@ function normalizePercent(rawValue) {
   if (text.endsWith(".") || text === "-" || text === "+") return null;
   const numeric = Number(text);
   if (!Number.isFinite(numeric)) return null;
-  const percent = numeric <= 1 ? numeric * 100 : numeric;
-  return clamp(percent, 0, 100);
+  return clamp(numeric, 0, 100);
 }
 
 function roundPercent(value) {

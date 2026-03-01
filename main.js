@@ -468,7 +468,7 @@ function renderAudienceFields(sourceRow = null) {
   const valueFor = (key) => (sourceRow ? sourceRow[key] : "");
   const countryRows = parseBreakdown(valueFor("audience_country"));
   const ageRows = parseBreakdown(valueFor("audience_age"));
-  countryRowCount = clamp(Math.max(MIN_COUNTRY_ROWS, countryRows.length || countryRowCount), MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
+  countryRowCount = clamp(Math.max(countryRowCount, countryRows.length, MIN_COUNTRY_ROWS), MIN_COUNTRY_ROWS, MAX_COUNTRY_ROWS);
 
   audienceFieldsEl.innerHTML = `
     <div class="audience-chip-row">

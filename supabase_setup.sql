@@ -24,8 +24,8 @@ create table public.reels (
 
   watch_time numeric,
   duration numeric,
-  views_followers bigint,
-  views_non_followers bigint,
+  views_followers numeric,
+  views_non_followers numeric,
 
   views_over_time_all text,
   views_over_time_followers text,

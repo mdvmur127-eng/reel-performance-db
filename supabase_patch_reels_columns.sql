@@ -32,6 +32,10 @@ alter table public.reels
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
 
+alter table public.reels
+  alter column views_followers type numeric using views_followers::numeric,
+  alter column views_non_followers type numeric using views_non_followers::numeric;
+
 do $$
 declare
   idx integer;
@@ -69,6 +73,19 @@ begin
     execute 'update public.reels set published_at = coalesce(published_at, created_at) where published_at is null';
   end if;
 end $$;
+
+-- Ensure required fields are populated before NOT NULL constraints
+update public.reels
+set url = concat('https://placeholder.local/reel/', id::text)
+where url is null or btrim(url) = '';
+
+update public.reels
+set title = coalesce(nullif(btrim(title), ''), 'Untitled Reel')
+where title is null or btrim(title) = '';
+
+update public.reels
+set published_at = coalesce(published_at, created_at, now())
+where published_at is null;
 
 alter table public.reels alter column title set not null;
 alter table public.reels alter column url set not null;

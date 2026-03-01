@@ -118,6 +118,11 @@ textarea:focus {
   border-color: var(--gold);
 }
 
+input[readonly] {
+  background: rgba(30, 42, 56, 0.06);
+  color: var(--muted);
+}
+
 button {
   border-radius: 10px;
   border: 1px solid var(--gold);

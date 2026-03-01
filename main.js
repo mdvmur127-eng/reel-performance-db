@@ -52,8 +52,8 @@ const PERFORMANCE_FIELDS = [
   { key: "saves", label: "Saves", type: "number" },
   { key: "shares", label: "Shares", type: "number" },
   { key: "follows", label: "Follows", type: "number" },
-  { key: "views_followers", label: "Views (Followers)", type: "number" },
-  { key: "views_non_followers", label: "Views (Non-followers)", type: "number" },
+  { key: "views_followers", label: "Views (Followers %)", type: "number", placeholder: "e.g. 50 or 0.5" },
+  { key: "views_non_followers", label: "Views (Non-followers %)", type: "number", readonly: true },
   { key: "views_over_time_all", label: "Views over time (All)", type: "textarea", full: true },
   { key: "views_over_time_followers", label: "Views over time (Followers)", type: "textarea", full: true },
   { key: "views_over_time_non_followers", label: "Views over time (Non-followers)", type: "textarea", full: true },
@@ -133,6 +133,40 @@ function toDisplayDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizePercent(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === "") return null;
+  const text = String(rawValue).replace("%", "").trim();
+  if (!text) return null;
+  const numeric = Number(text);
+  if (!Number.isFinite(numeric)) return null;
+  const percent = numeric <= 1 ? numeric * 100 : numeric;
+  return clamp(percent, 0, 100);
+}
+
+function roundPercent(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function recomputeFollowerSplit() {
+  const followersInput = formEl?.elements?.namedItem("views_followers");
+  const nonFollowersInput = formEl?.elements?.namedItem("views_non_followers");
+  if (!(followersInput instanceof HTMLInputElement) || !(nonFollowersInput instanceof HTMLInputElement)) return;
+
+  const followersPercent = normalizePercent(followersInput.value);
+  if (followersPercent === null) {
+    nonFollowersInput.value = "";
+    return;
+  }
+
+  const nonFollowersPercent = roundPercent(100 - followersPercent);
+  followersInput.value = String(roundPercent(followersPercent));
+  nonFollowersInput.value = String(nonFollowersPercent);
 }
 
 function parseTimeToSeconds(rawValue) {
@@ -215,6 +249,7 @@ function inputMarkup(field, value = "") {
         value="${escapeHtml(safeValue)}"
         placeholder="${escapeHtml(field.placeholder || "")}"
         ${field.required ? "required" : ""}
+        ${field.readonly ? "readonly" : ""}
         ${field.type === "number" ? 'step="any"' : ""}
       />
     </label>
@@ -237,6 +272,15 @@ function buildPayloadFromForm(formData) {
     const rawValue = formData.get(field.key);
 
     if (field.type === "number") {
+      if (field.key === "views_followers") {
+        payload.views_followers = normalizePercent(rawValue);
+        continue;
+      }
+      if (field.key === "views_non_followers") {
+        const followersPercent = normalizePercent(formData.get("views_followers"));
+        payload.views_non_followers = followersPercent === null ? null : roundPercent(100 - followersPercent);
+        continue;
+      }
       payload[field.key] = toNumberOrNull(rawValue);
       continue;
     }
@@ -308,6 +352,7 @@ function resetForm() {
   formTitleEl.textContent = "Add Reel";
   cancelEditBtn.classList.add("hidden");
   renderFormFields(null);
+  recomputeFollowerSplit();
   setSaving(false);
 }
 
@@ -316,6 +361,7 @@ function startEdit(row) {
   formTitleEl.textContent = "Edit Reel";
   cancelEditBtn.classList.remove("hidden");
   renderFormFields(row);
+  recomputeFollowerSplit();
   setSaving(false);
   formEl.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -499,6 +545,14 @@ async function init() {
 
   currentUser = data.user;
   userEmailEl.textContent = currentUser.email || "";
+  formEl.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.getAttribute("name") === "views_followers") {
+      recomputeFollowerSplit();
+    }
+  });
+  recomputeFollowerSplit();
   await refreshList();
 }
 

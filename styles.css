@@ -185,6 +185,85 @@ label.field.full {
   margin-bottom: 10px;
 }
 
+.audience-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--white);
+}
+
+.chip-active {
+  border-color: var(--gold);
+  background: rgba(245, 166, 34, 0.16);
+}
+
+.audience-block {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(30, 42, 56, 0.02);
+}
+
+.audience-block-head {
+  margin-bottom: 8px;
+}
+
+.audience-input-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.audience-input-row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 8px;
+}
+
+.audience-bars {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.audience-bar-row {
+  display: grid;
+  grid-template-columns: 170px 1fr 72px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.audience-bar-label,
+.audience-bar-value {
+  color: var(--muted);
+}
+
+.audience-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(30, 42, 56, 0.14);
+  overflow: hidden;
+}
+
+.audience-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--gold);
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -255,6 +334,11 @@ label.field.full {
   .field-grid,
   .seconds-grid,
   .list {
+    grid-template-columns: 1fr;
+  }
+
+  .audience-input-row,
+  .audience-bar-row {
     grid-template-columns: 1fr;
   }
 

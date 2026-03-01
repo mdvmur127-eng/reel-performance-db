@@ -64,10 +64,8 @@ const PERFORMANCE_FIELDS = [
 ];
 
 const AUDIENCE_FIELDS = [
-  { key: "audience_men", label: "Audience (Men)", type: "number" },
-  { key: "audience_women", label: "Audience (Women)", type: "number" },
-  { key: "audience_country", label: "Audience (Country)", type: "textarea", full: true },
-  { key: "audience_age", label: "Audience (Age)", type: "textarea", full: true },
+  { key: "audience_men", label: "Audience (Men %)", type: "number", placeholder: "0-100" },
+  { key: "audience_women", label: "Audience (Women %)", type: "number", placeholder: "0-100" },
 ];
 
 const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
@@ -75,6 +73,7 @@ const SECOND_FIELDS = Array.from({ length: 91 }, (_, index) => ({
   label: `Retention at ${index}s (%)`,
   type: "number",
 }));
+const AUDIENCE_BREAKDOWN_ROWS = 8;
 
 const ALL_FIELDS = [...BASIC_FIELDS, ...PERFORMANCE_FIELDS, ...AUDIENCE_FIELDS, ...SECOND_FIELDS];
 
@@ -260,8 +259,107 @@ function renderFormFields(sourceRow = null) {
 
   basicFieldsEl.innerHTML = BASIC_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
   performanceFieldsEl.innerHTML = PERFORMANCE_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
-  audienceFieldsEl.innerHTML = AUDIENCE_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
+  renderAudienceFields(sourceRow);
   secondsFieldsEl.innerHTML = SECOND_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
+}
+
+function parseBreakdown(rawValue) {
+  if (!rawValue) return [];
+  const text = String(rawValue).trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => ({
+          label: String(item?.label || "").trim(),
+          value: toNumberOrNull(item?.value),
+        }))
+        .filter((item) => item.label && item.value !== null);
+    }
+  } catch (_) {
+    // Ignore invalid JSON and continue with line parsing fallback.
+  }
+
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const [labelPart, valuePart] = line.split(":");
+      return {
+        label: String(labelPart || "").trim(),
+        value: toNumberOrNull(String(valuePart || "").replace("%", "").trim()),
+      };
+    })
+    .filter((item) => item.label && item.value !== null);
+}
+
+function audienceRowsMarkup(prefix, rows, title) {
+  const filledRows = Array.from({ length: AUDIENCE_BREAKDOWN_ROWS }, (_, idx) => rows[idx] || { label: "", value: "" });
+  const bars = rows
+    .map((row) => {
+      const pct = clamp(Number(row.value) || 0, 0, 100);
+      return `
+        <div class="audience-bar-row">
+          <div class="audience-bar-label">${escapeHtml(row.label)}</div>
+          <div class="audience-bar-track">
+            <span class="audience-bar-fill" style="width:${escapeHtml(String(pct))}%"></span>
+          </div>
+          <div class="audience-bar-value">${escapeHtml(String(roundPercent(pct)))}%</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const inputs = filledRows
+    .map(
+      (row, idx) => `
+        <div class="audience-input-row">
+          <input type="text" name="${prefix}_label_${idx}" placeholder="${title} name" value="${escapeHtml(row.label || "")}" />
+          <input type="number" name="${prefix}_percent_${idx}" placeholder="%" step="any" min="0" max="100" value="${escapeHtml(row.value ?? "")}" />
+        </div>
+      `,
+    )
+    .join("");
+
+  return `
+    <section class="audience-block">
+      <div class="audience-block-head">
+        <span class="chip">${escapeHtml(title)}</span>
+      </div>
+      <div class="audience-input-grid">${inputs}</div>
+      ${bars ? `<div class="audience-bars">${bars}</div>` : ""}
+    </section>
+  `;
+}
+
+function renderAudienceFields(sourceRow = null) {
+  const valueFor = (key) => (sourceRow ? sourceRow[key] : "");
+  const menWomen = AUDIENCE_FIELDS.map((field) => inputMarkup(field, valueFor(field.key))).join("");
+  const countryRows = parseBreakdown(valueFor("audience_country"));
+  const ageRows = parseBreakdown(valueFor("audience_age"));
+
+  audienceFieldsEl.innerHTML = `
+    <div class="audience-chip-row">
+      <span class="chip chip-active">Gender</span>
+      <span class="chip">Country</span>
+      <span class="chip">Age</span>
+    </div>
+    <div class="field-grid">${menWomen}</div>
+    ${audienceRowsMarkup("audience_country", countryRows, "Country")}
+    ${audienceRowsMarkup("audience_age", ageRows, "Age")}
+  `;
+}
+
+function parseBreakdownFromForm(formData, prefix) {
+  const rows = [];
+  for (let index = 0; index < AUDIENCE_BREAKDOWN_ROWS; index += 1) {
+    const label = String(formData.get(`${prefix}_label_${index}`) || "").trim();
+    const value = toNumberOrNull(formData.get(`${prefix}_percent_${index}`));
+    if (!label || value === null) continue;
+    rows.push({ label, value: clamp(value, 0, 100) });
+  }
+  return rows;
 }
 
 function buildPayloadFromForm(formData) {
@@ -299,6 +397,11 @@ function buildPayloadFromForm(formData) {
     const text = String(rawValue || "").trim();
     payload[field.key] = text || null;
   }
+
+  const countryRows = parseBreakdownFromForm(formData, "audience_country");
+  const ageRows = parseBreakdownFromForm(formData, "audience_age");
+  payload.audience_country = countryRows.length ? JSON.stringify(countryRows) : null;
+  payload.audience_age = ageRows.length ? JSON.stringify(ageRows) : null;
 
   return payload;
 }

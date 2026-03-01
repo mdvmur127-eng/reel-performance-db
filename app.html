@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Reel Performance DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260225d" />
+    <title>Reels DB</title>
+    <link rel="stylesheet" href="/styles.css?v=20260301a" />
   </head>
   <body>
     <main class="app">
       <header class="top">
         <div>
-          <h1>Reel Performance DB</h1>
-          <p class="sub">Upload videos, track metrics, decide what to execute again.</p>
+          <h1>Reels Database</h1>
+          <p class="sub">Track all reel fields in one place.</p>
         </div>
         <div class="user-actions">
           <span id="user-email" class="meta"></span>
@@ -19,142 +19,46 @@
         </div>
       </header>
 
-      <nav class="tabs" aria-label="Sections">
-        <button id="tab-overview" class="tab-btn active" type="button" data-tab="overview">Overview</button>
-        <button id="tab-insights" class="tab-btn" type="button" data-tab="insights">Insights</button>
-      </nav>
+      <section class="panel">
+        <div class="section-head">
+          <h2 id="form-title">Add Reel</h2>
+          <button id="cancel-edit-btn" type="button" class="secondary hidden">Cancel Edit</button>
+        </div>
 
-      <div id="view-overview" class="view active">
-        <section class="panel">
-          <div class="section-head">
-            <h2>Instagram Sync</h2>
-          </div>
-          <div class="grid">
-            <label class="full">
-              Instagram User Access Token
-              <input
-                id="instagram-token"
-                name="instagram_token"
-                type="password"
-                placeholder="Paste Instagram Graph API token"
-                autocomplete="off"
-              />
-            </label>
-            <label>
-              Import limit
-              <input id="instagram-limit" name="instagram_limit" type="number" min="1" max="50" value="5" />
-            </label>
-            <div class="full sync-inline">
-              <button id="connect-instagram-btn" type="button" class="secondary">Connect Instagram</button>
-              <button id="sync-ig-btn" type="button">Sync IG Account</button>
-              <button id="sync-instagram-btn" type="button">Sync Posts Now</button>
-            </div>
-          </div>
-          <p class="meta">
-            Use Sync IG Account for connected OAuth account, or use token mode with Sync Posts Now.
-          </p>
-          <p id="instagram-sync-status" class="meta"></p>
-        </section>
+        <form id="reel-form" class="form-grid" method="post" action="#">
+          <div id="fields-basic" class="field-grid"></div>
 
-        <section class="panel">
-          <h2>Add Reel</h2>
-          <form id="upload-form" class="grid" method="post" action="#">
-            <label>
-              Reel name
-              <input id="title" name="title" required maxlength="120" placeholder="Spring product drop teaser" />
-            </label>
-            <label>
-              Platform
-              <select id="platform" name="platform">
-                <option>Instagram</option>
-                <option>TikTok</option>
-                <option>YouTube Shorts</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label class="full">
-              Video URL
-              <input
-                id="video-url"
-                name="video_url"
-                type="url"
-                required
-                placeholder="https://example.com/video.mp4"
-              />
-            </label>
-            <div class="full form-actions">
-              <button type="submit">Save Reel</button>
-            </div>
-          </form>
-        </section>
+          <details class="details" open>
+            <summary>Performance Metrics</summary>
+            <div id="fields-performance" class="field-grid"></div>
+          </details>
 
-        <section class="panel">
-          <div class="section-head">
-            <h2>Best Candidates To Execute Again</h2>
-            <button id="refresh-ranking" type="button" class="secondary">Refresh Ranking</button>
-          </div>
-          <div id="ranking" class="ranking"></div>
-        </section>
+          <details class="details">
+            <summary>Audience & Distribution</summary>
+            <div id="fields-audience" class="field-grid"></div>
+          </details>
 
-        <section class="panel">
-          <h2>Reels Database</h2>
-          <div class="reels-controls">
-            <div class="chip-row" aria-label="Reel type filters">
-              <button id="chip-all" class="chip active" type="button" data-kind="all">All</button>
-              <button id="chip-video" class="chip" type="button" data-kind="video">Videos</button>
-              <button id="chip-static" class="chip" type="button" data-kind="static">Static</button>
-            </div>
-            <label class="sort-control">
-              Sort
-              <select id="reels-sort">
-                <option value="published_desc">Published: Newest first</option>
-                <option value="published_asc">Published: Oldest first</option>
-                <option value="score_desc">Score: Highest first</option>
-                <option value="score_asc">Score: Lowest first</option>
-                <option value="views_desc">Views: Highest first</option>
-                <option value="views_asc">Views: Lowest first</option>
-              </select>
-            </label>
-          </div>
-          <div id="list" class="list"></div>
-        </section>
-      </div>
+          <details class="details">
+            <summary>Retention By Second (sec_0 to sec_90)</summary>
+            <div id="fields-seconds" class="seconds-grid"></div>
+          </details>
 
-      <div id="view-insights" class="view">
-        <section class="panel">
-          <h2>Replication Recommendation</h2>
-          <div id="insight-recommendation" class="recommendation-card">
-            <p id="recommendation-title" class="recommendation-title"></p>
-            <p id="recommendation-body" class="meta"></p>
-            <div id="recommendation-points" class="recommendation-points"></div>
+          <div class="form-actions">
+            <button id="save-btn" type="submit">Save Reel</button>
           </div>
-        </section>
+        </form>
+        <p id="form-status" class="meta"></p>
+      </section>
 
-        <section class="panel">
-          <div class="section-head">
-            <h2>Insights</h2>
-            <label class="insight-control">
-              Metric
-              <select id="insight-metric">
-                <option value="views">Views</option>
-                <option value="likes">Likes</option>
-                <option value="comments">Comments</option>
-                <option value="saves">Saves</option>
-                <option value="accounts_reached">Accounts Reached</option>
-                <option value="this_reel_skip_rate">This Reel Skip Rate</option>
-                <option value="average_watch_time">Average Watch Time</option>
-                <option value="score">Score</option>
-              </select>
-            </label>
-          </div>
-          <div class="insights-scroll">
-            <canvas id="insights-chart" class="insights-chart" width="1100" height="420" aria-label="Reel metrics chart"></canvas>
-          </div>
-          <div id="insights-best-legend" class="insights-best-legend"></div>
-          <p id="insights-empty" class="meta"></p>
-        </section>
-      </div>
+      <section class="panel">
+        <div class="section-head">
+          <h2>Saved Reels</h2>
+          <button id="refresh-btn" type="button" class="secondary">Refresh</button>
+        </div>
+        <div id="reels-list" class="list"></div>
+      </section>
     </main>
-    <script type="module" src="/main.js?v=20260225d"></script>
+
+    <script type="module" src="/main.js?v=20260301a"></script>
   </body>
 </html>

@@ -582,32 +582,73 @@ function cardValue(value) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
 
+function ratioToPercentString(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  const ratio = numeric > 1 ? numeric / 100 : numeric;
+  return `${roundPercent(clamp(ratio, 0, 1) * 100)}%`;
+}
+
 function renderList(rows) {
   if (!rows.length) {
     listEl.innerHTML = '<div class="meta">No reels saved yet.</div>';
     return;
   }
 
-  listEl.innerHTML = rows
+  const bodyRows = rows
     .map((row) => {
       const url = String(row.url || "").trim();
       const safeUrl = /^https?:\/\//i.test(url) ? url : "";
       return `
-        <article class="card" data-id="${row.id}">
-          <h3>${escapeHtml(cardValue(row.title))}</h3>
-          <div class="card-meta">Date: ${escapeHtml(toDisplayDate(row.published_at))}</div>
-          <div class="card-meta">Views: ${escapeHtml(cardValue(row.views))} • Likes: ${escapeHtml(cardValue(row.likes))} • Comments: ${escapeHtml(cardValue(row.comments))}</div>
-          <div class="card-meta">Saves: ${escapeHtml(cardValue(row.saves))} • Shares: ${escapeHtml(cardValue(row.shares))} • Follows: ${escapeHtml(cardValue(row.follows))}</div>
-          <div class="card-meta">Reach: ${escapeHtml(cardValue(row.accounts_reached))} • Avg watch: ${escapeHtml(cardValue(row.average_watch_time))}</div>
-          ${safeUrl ? `<a class="card-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open URL</a>` : '<span class="card-meta">URL: -</span>'}
-          <div class="card-actions">
-            <button type="button" data-action="edit">Edit</button>
-            <button type="button" data-action="delete" class="danger">Delete</button>
-          </div>
-        </article>
+        <tr data-id="${escapeHtml(String(row.id))}">
+          <td class="reel-title-cell">${escapeHtml(cardValue(row.title))}</td>
+          <td>${escapeHtml(toDisplayDate(row.published_at))}</td>
+          <td>${safeUrl ? `<a class="table-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : "-"}</td>
+          <td>${escapeHtml(cardValue(row.views))}</td>
+          <td>${escapeHtml(cardValue(row.likes))}</td>
+          <td>${escapeHtml(cardValue(row.comments))}</td>
+          <td>${escapeHtml(cardValue(row.saves))}</td>
+          <td>${escapeHtml(cardValue(row.shares))}</td>
+          <td>${escapeHtml(cardValue(row.follows))}</td>
+          <td>${escapeHtml(cardValue(row.accounts_reached))}</td>
+          <td>${escapeHtml(ratioToPercentString(row.audience_men))}</td>
+          <td>${escapeHtml(ratioToPercentString(row.audience_women))}</td>
+          <td>
+            <div class="row-actions">
+              <button type="button" class="row-btn secondary" data-action="edit">Edit</button>
+              <button type="button" class="row-btn danger" data-action="delete">Delete</button>
+            </div>
+          </td>
+        </tr>
       `;
     })
     .join("");
+
+  listEl.innerHTML = `
+    <div class="table-wrap">
+      <table class="reels-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Date</th>
+            <th>URL</th>
+            <th>Views</th>
+            <th>Likes</th>
+            <th>Comments</th>
+            <th>Saves</th>
+            <th>Shares</th>
+            <th>Follows</th>
+            <th>Reached</th>
+            <th>Men</th>
+            <th>Women</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function resetForm() {
@@ -756,15 +797,23 @@ refreshBtn.addEventListener("click", async () => {
 });
 
 listEl.addEventListener("click", async (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement) || !currentUser) return;
-  const action = target.dataset.action;
+  const rawTarget = event.target;
+  const target =
+    rawTarget instanceof Element
+      ? rawTarget
+      : rawTarget && "parentElement" in rawTarget
+        ? rawTarget.parentElement
+        : null;
+  if (!target || !currentUser) return;
+
+  const actionNode = target.closest("[data-action]");
+  const action = actionNode?.getAttribute("data-action");
   if (!action) return;
 
-  const card = target.closest(".card[data-id]");
-  if (!card) return;
+  const rowNode = actionNode?.closest("[data-id]");
+  if (!rowNode) return;
 
-  const id = String(card.dataset.id || "").trim();
+  const id = String(rowNode.getAttribute("data-id") || "").trim();
   if (!id) return;
 
   if (action === "edit") {

@@ -302,9 +302,7 @@ label.field.full {
 }
 
 .list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  display: block;
 }
 
 .card {
@@ -314,6 +312,68 @@ label.field.full {
   background: var(--white);
   display: grid;
   gap: 10px;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.reels-table {
+  width: 100%;
+  min-width: 1160px;
+  border-collapse: collapse;
+  background: var(--white);
+}
+
+.reels-table th,
+.reels-table td {
+  text-align: left;
+  vertical-align: middle;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.reels-table th {
+  position: sticky;
+  top: 0;
+  background: #f6f7f9;
+  font-weight: 600;
+  color: var(--navy);
+  z-index: 1;
+}
+
+.reels-table tbody tr:hover {
+  background: rgba(245, 166, 34, 0.08);
+}
+
+.reel-title-cell {
+  max-width: 320px;
+  white-space: normal;
+  font-weight: 600;
+}
+
+.table-link {
+  color: var(--navy);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
 }
 
 .card h3 {

@@ -821,8 +821,14 @@ async function init() {
     }
   });
   audienceFieldsEl.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
+    const rawTarget = event.target;
+    const target =
+      rawTarget instanceof Element
+        ? rawTarget
+        : rawTarget && "parentElement" in rawTarget
+          ? rawTarget.parentElement
+          : null;
+    if (!target) return;
     const tabNode = target.closest("[data-audience-tab]");
     const actionNode = target.closest("[data-country-action]");
     const tab = tabNode?.getAttribute("data-audience-tab");

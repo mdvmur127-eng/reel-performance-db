@@ -20,12 +20,15 @@ const basicFieldsEl = document.getElementById("fields-basic");
 const performanceFieldsEl = document.getElementById("fields-performance");
 const audienceFieldsEl = document.getElementById("fields-audience");
 const secondsFieldsEl = document.getElementById("fields-seconds");
+const insightsPanelEl = document.getElementById("reel-insights-panel");
+const insightsContentEl = document.getElementById("reel-insights-content");
 
 let currentUser = null;
 let editId = null;
 let cachedRows = [];
 let activeAudienceTab = "gender";
 let countryRowCount = 5;
+let selectedInsightId = null;
 
 const AGE_GROUPS = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
 const MIN_COUNTRY_ROWS = 1;
@@ -590,9 +593,194 @@ function ratioToPercentString(value) {
   return `${roundPercent(clamp(ratio, 0, 1) * 100)}%`;
 }
 
+function metricNumber(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return numeric;
+}
+
+function metricDisplay(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0";
+  return numeric.toLocaleString();
+}
+
+function percentDisplay(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "-";
+  return `${roundPercent(numeric)}%`;
+}
+
+function pointsFromRetention(row) {
+  const points = [];
+  for (let second = 0; second <= 90; second += 1) {
+    const v = toNumberOrNull(row[`sec_${second}`]);
+    if (v === null) continue;
+    points.push({ x: second, y: clamp(v, 0, 100) });
+  }
+  return points;
+}
+
+function retentionChartMarkup(row) {
+  const points = pointsFromRetention(row);
+  if (!points.length) {
+    return '<div class="chart-empty">No retention points yet. Fill sec_0..sec_90 to see the curve.</div>';
+  }
+
+  const width = 820;
+  const height = 250;
+  const pad = { left: 42, right: 18, top: 14, bottom: 34 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const maxX = Math.max(...points.map((p) => p.x), 1);
+  const scaleX = (x) => pad.left + (x / maxX) * innerW;
+  const scaleY = (y) => pad.top + ((100 - y) / 100) * innerH;
+  const poly = points.map((p) => `${scaleX(p.x)},${scaleY(p.y)}`).join(" ");
+
+  const yTicks = [0, 25, 50, 75, 100]
+    .map((tick) => {
+      const y = scaleY(tick);
+      return `
+        <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="grid-line"></line>
+        <text x="${pad.left - 8}" y="${y + 4}" class="axis-label" text-anchor="end">${tick}%</text>
+      `;
+    })
+    .join("");
+
+  const xTicks = [0, 15, 30, 45, 60, 75, 90]
+    .filter((tick) => tick <= maxX)
+    .map((tick) => {
+      const x = scaleX(tick);
+      return `<text x="${x}" y="${height - 10}" class="axis-label" text-anchor="middle">${tick}s</text>`;
+    })
+    .join("");
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="insight-chart" role="img" aria-label="Retention curve">
+      <rect x="${pad.left}" y="${pad.top}" width="${innerW}" height="${innerH}" class="chart-bg"></rect>
+      ${yTicks}
+      <polyline points="${poly}" class="line-path"></polyline>
+      ${xTicks}
+    </svg>
+  `;
+}
+
+function barsMarkup(items) {
+  const max = Math.max(...items.map((item) => item.value), 1);
+  return items
+    .map((item) => {
+      const width = roundPercent((item.value / max) * 100);
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${escapeHtml(item.label)}</div>
+          <div class="bar-track"><span class="bar-fill" style="width:${width}%"></span></div>
+          <div class="bar-value">${escapeHtml(metricDisplay(item.value))}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function percentageBarsMarkup(rows) {
+  if (!rows.length) return '<div class="chart-empty">No data yet.</div>';
+  return rows
+    .map((row) => {
+      const pct = clamp(metricNumber(row.value), 0, 100);
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${escapeHtml(row.label)}</div>
+          <div class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></div>
+          <div class="bar-value">${escapeHtml(percentDisplay(pct))}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderReelInsights(row) {
+  if (!insightsContentEl) return;
+  if (!row) {
+    insightsContentEl.innerHTML = '<p class="meta">Click a reel title in the table to view visual insights.</p>';
+    return;
+  }
+
+  const url = String(row.url || "").trim();
+  const safeUrl = /^https?:\/\//i.test(url) ? url : "";
+  const menPct = clamp((normalizeSexRatio(row.audience_men) || 0) * 100, 0, 100);
+  const womenPct = roundPercent(100 - menPct);
+  const followerPct = normalizePercent(row.views_followers) ?? 0;
+  const nonFollowerPct = roundPercent(100 - followerPct);
+
+  const engagementBars = barsMarkup([
+    { label: "Views", value: metricNumber(row.views) },
+    { label: "Likes", value: metricNumber(row.likes) },
+    { label: "Comments", value: metricNumber(row.comments) },
+    { label: "Saves", value: metricNumber(row.saves) },
+    { label: "Shares", value: metricNumber(row.shares) },
+    { label: "Follows", value: metricNumber(row.follows) },
+  ]);
+
+  const countryRows = parseBreakdown(row.audience_country);
+  const ageRows = parseBreakdown(row.audience_age);
+
+  insightsContentEl.innerHTML = `
+    <div class="insights-head">
+      <div>
+        <h4>${escapeHtml(cardValue(row.title))}</h4>
+        <p class="meta">Published: ${escapeHtml(toDisplayDate(row.published_at))} • Source: ${escapeHtml(cardValue(row.top_source_of_views))}</p>
+      </div>
+      ${safeUrl ? `<a class="table-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open Reel</a>` : ""}
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><span>Views</span><strong>${escapeHtml(metricDisplay(row.views))}</strong></div>
+      <div class="kpi"><span>Reached</span><strong>${escapeHtml(metricDisplay(row.accounts_reached))}</strong></div>
+      <div class="kpi"><span>Engagements</span><strong>${escapeHtml(metricDisplay(metricNumber(row.likes) + metricNumber(row.comments) + metricNumber(row.saves) + metricNumber(row.shares)))}</strong></div>
+      <div class="kpi"><span>Avg Watch</span><strong>${escapeHtml(cardValue(row.average_watch_time))}</strong></div>
+      <div class="kpi"><span>Skip Rate</span><strong>${escapeHtml(percentDisplay(metricNumber(row.reel_skip_rate)))}</strong></div>
+      <div class="kpi"><span>Typical Skip</span><strong>${escapeHtml(percentDisplay(metricNumber(row.typical_skip_rate)))}</strong></div>
+    </div>
+
+    <div class="insights-grid">
+      <section class="insight-card full">
+        <h5>Retention Curve</h5>
+        ${retentionChartMarkup(row)}
+      </section>
+
+      <section class="insight-card">
+        <h5>Engagement Mix</h5>
+        <div class="bar-list">${engagementBars}</div>
+      </section>
+
+      <section class="insight-card">
+        <h5>Audience Split</h5>
+        <div class="bar-list">
+          ${percentageBarsMarkup([
+            { label: "Men", value: menPct },
+            { label: "Women", value: womenPct },
+            { label: "Followers", value: followerPct },
+            { label: "Non-followers", value: nonFollowerPct },
+          ])}
+        </div>
+      </section>
+
+      <section class="insight-card">
+        <h5>Top Countries</h5>
+        <div class="bar-list">${percentageBarsMarkup(countryRows)}</div>
+      </section>
+
+      <section class="insight-card">
+        <h5>Age Groups</h5>
+        <div class="bar-list">${percentageBarsMarkup(ageRows)}</div>
+      </section>
+    </div>
+  `;
+}
+
 function renderList(rows) {
   if (!rows.length) {
     listEl.innerHTML = '<div class="meta">No reels saved yet.</div>';
+    renderReelInsights(null);
     return;
   }
 
@@ -600,9 +788,12 @@ function renderList(rows) {
     .map((row) => {
       const url = String(row.url || "").trim();
       const safeUrl = /^https?:\/\//i.test(url) ? url : "";
+      const isSelected = String(selectedInsightId || "") === String(row.id);
       return `
-        <tr data-id="${escapeHtml(String(row.id))}">
-          <td class="reel-title-cell">${escapeHtml(cardValue(row.title))}</td>
+        <tr data-id="${escapeHtml(String(row.id))}" class="${isSelected ? "is-selected" : ""}">
+          <td class="reel-title-cell">
+            <button type="button" class="title-link-btn" data-action="insight">${escapeHtml(cardValue(row.title))}</button>
+          </td>
           <td>${escapeHtml(toDisplayDate(row.published_at))}</td>
           <td>${safeUrl ? `<a class="table-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : "-"}</td>
           <td>${escapeHtml(cardValue(row.views))}</td>
@@ -649,6 +840,10 @@ function renderList(rows) {
       </table>
     </div>
   `;
+
+  const selected = rows.find((row) => String(row.id) === String(selectedInsightId)) || rows[0];
+  selectedInsightId = selected?.id || null;
+  renderReelInsights(selected || null);
 }
 
 function resetForm() {
@@ -815,6 +1010,12 @@ listEl.addEventListener("click", async (event) => {
 
   const id = String(rowNode.getAttribute("data-id") || "").trim();
   if (!id) return;
+
+  if (action === "insight") {
+    selectedInsightId = id;
+    renderList(cachedRows);
+    return;
+  }
 
   if (action === "edit") {
     const row = cachedRows.find((item) => String(item.id) === id);

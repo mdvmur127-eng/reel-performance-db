@@ -248,6 +248,28 @@ label.field.full {
   flex-wrap: wrap;
 }
 
+.total-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--white);
+}
+
+.total-hint.is-valid {
+  color: #117a37;
+  border-color: rgba(17, 122, 55, 0.35);
+  background: rgba(17, 122, 55, 0.08);
+}
+
+.total-hint.is-invalid {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.35);
+  background: rgba(180, 35, 24, 0.08);
+}
+
 .tiny-btn {
   min-height: 34px;
   padding: 6px 10px;

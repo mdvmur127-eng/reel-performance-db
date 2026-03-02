@@ -33,6 +33,8 @@ let selectedInsightId = null;
 const AGE_GROUPS = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
 const MIN_COUNTRY_ROWS = 1;
 const MAX_COUNTRY_ROWS = 15;
+const TOTAL_PERCENT = 100;
+const PERCENT_TOLERANCE = 0.01;
 
 const BASIC_FIELDS = [
   { key: "published_at", label: "Date", type: "datetime-local", required: true },
@@ -155,6 +157,10 @@ function normalizePercent(rawValue) {
 
 function roundPercent(value) {
   return Math.round(value * 100) / 100;
+}
+
+function formatPercent(value) {
+  return `${roundPercent(value)}%`;
 }
 
 function normalizeSexRatio(rawValue) {
@@ -384,6 +390,7 @@ function countryRowsMarkup(rows) {
       <div class="audience-block-head">
         <span class="chip">Country Breakdown</span>
         <div class="row-controls">
+          <span class="total-hint" data-total-hint="audience_country">Total: 0%</span>
           <button type="button" class="tiny-btn secondary" data-country-action="add">+ Add country</button>
           <button type="button" class="tiny-btn secondary" data-country-action="remove">- Remove</button>
         </div>
@@ -432,6 +439,7 @@ function ageRowsMarkup(rows) {
     <section class="audience-block ${activeAudienceTab === "audience_age" ? "is-active" : ""}" data-audience-panel="audience_age">
       <div class="audience-block-head">
         <span class="chip">Age Breakdown</span>
+        <span class="total-hint" data-total-hint="audience_age">Total: 0%</span>
       </div>
       <div class="audience-input-grid">${inputs}</div>
       ${bars ? `<div class="audience-bars">${bars}</div>` : ""}
@@ -483,6 +491,7 @@ function renderAudienceFields(sourceRow = null) {
     ${countryRowsMarkup(countryRows)}
     ${ageRowsMarkup(ageRows)}
   `;
+  syncAudienceTotalHints();
 }
 
 function parseBreakdownFromForm(formData, prefix) {
@@ -495,6 +504,68 @@ function parseBreakdownFromForm(formData, prefix) {
     rows.push({ label, value: clamp(value, 0, 100) });
   }
   return rows;
+}
+
+function hasBreakdownDraftInput(formData, prefix) {
+  const totalRows = prefix === "audience_age" ? AGE_GROUPS.length : countryRowCount;
+  for (let index = 0; index < totalRows; index += 1) {
+    const label = String(formData.get(`${prefix}_label_${index}`) || "").trim();
+    const percent = String(formData.get(`${prefix}_percent_${index}`) || "").trim();
+    if (label || percent) return true;
+  }
+  return false;
+}
+
+function breakdownTotal(rows) {
+  return rows.reduce((sum, row) => sum + (toNumberOrNull(row.value) ?? 0), 0);
+}
+
+function isTotalHundred(total) {
+  return Math.abs(total - TOTAL_PERCENT) <= PERCENT_TOLERANCE;
+}
+
+function getBreakdownValidation(formData) {
+  const countryRows = parseBreakdownFromForm(formData, "audience_country");
+  const ageRows = parseBreakdownFromForm(formData, "audience_age");
+  const countryTotal = breakdownTotal(countryRows);
+  const ageTotal = breakdownTotal(ageRows);
+  const countryHasAny = hasBreakdownDraftInput(formData, "audience_country");
+  const ageHasAny = hasBreakdownDraftInput(formData, "audience_age");
+
+  return {
+    country: {
+      total: countryTotal,
+      hasAny: countryHasAny,
+      valid: !countryHasAny || isTotalHundred(countryTotal),
+    },
+    age: {
+      total: ageTotal,
+      hasAny: ageHasAny,
+      valid: !ageHasAny || isTotalHundred(ageTotal),
+    },
+  };
+}
+
+function updateTotalHint(key, total, hasAny, valid) {
+  const hintEl = audienceFieldsEl?.querySelector(`[data-total-hint="${key}"]`);
+  if (!(hintEl instanceof HTMLElement)) return;
+
+  hintEl.classList.remove("is-valid", "is-invalid");
+  if (!hasAny) {
+    hintEl.textContent = "Total: 0%";
+    return;
+  }
+
+  hintEl.textContent = valid ? `Total: ${formatPercent(total)}` : `Total: ${formatPercent(total)} (must be 100%)`;
+  hintEl.classList.add(valid ? "is-valid" : "is-invalid");
+}
+
+function syncAudienceTotalHints() {
+  if (!formEl) return;
+  const fd = new FormData(formEl);
+  const totals = getBreakdownValidation(fd);
+  updateTotalHint("audience_country", totals.country.total, totals.country.hasAny, totals.country.valid);
+  updateTotalHint("audience_age", totals.age.total, totals.age.hasAny, totals.age.valid);
 }
 
 function captureAudienceDraft() {
@@ -943,6 +1014,20 @@ formEl.addEventListener("submit", async (event) => {
   }
 
   const fd = new FormData(formEl);
+  const breakdownValidation = getBreakdownValidation(fd);
+  if (!breakdownValidation.country.valid || !breakdownValidation.age.valid) {
+    syncAudienceTotalHints();
+    const errors = [];
+    if (!breakdownValidation.country.valid) {
+      errors.push(`Country total is ${formatPercent(breakdownValidation.country.total)}. It must equal 100%.`);
+    }
+    if (!breakdownValidation.age.valid) {
+      errors.push(`Age total is ${formatPercent(breakdownValidation.age.total)}. It must equal 100%.`);
+    }
+    setStatus(errors.join(" "), true);
+    return;
+  }
+
   const payload = buildPayloadFromForm(fd);
 
   if (!payload.published_at || !payload.title || !payload.url) {
@@ -1063,11 +1148,15 @@ async function init() {
   formEl.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.getAttribute("name") === "views_followers") {
+    const name = target.getAttribute("name") || "";
+    if (name === "views_followers") {
       recomputeFollowerSplit();
     }
-    if (target.getAttribute("name") === "audience_men") {
+    if (name === "audience_men") {
       recomputeGenderSplit();
+    }
+    if (name.startsWith("audience_country_") || name.startsWith("audience_age_")) {
+      syncAudienceTotalHints();
     }
   });
   audienceFieldsEl.addEventListener("click", (event) => {
@@ -1092,15 +1181,18 @@ async function init() {
       }
       renderAudienceFields(draft);
       recomputeGenderSplit();
+      syncAudienceTotalHints();
       return;
     }
     if (!tab) return;
     activeAudienceTab = tab;
     renderAudienceFields(draft);
     recomputeGenderSplit();
+    syncAudienceTotalHints();
   });
   recomputeFollowerSplit();
   recomputeGenderSplit();
+  syncAudienceTotalHints();
   await refreshList();
 }
 

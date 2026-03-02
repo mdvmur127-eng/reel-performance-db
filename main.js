@@ -700,13 +700,14 @@ function retentionChartMarkup(row) {
 
   const width = 820;
   const height = 250;
-  const pad = { left: 42, right: 18, top: 14, bottom: 34 };
+  const pad = { left: 42, right: 18, top: 14, bottom: 44 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
-  const maxX = Math.max(...points.map((p) => p.x), 1);
+  const maxX = 90;
   const scaleX = (x) => pad.left + (x / maxX) * innerW;
   const scaleY = (y) => pad.top + ((100 - y) / 100) * innerH;
   const poly = points.map((p) => `${scaleX(p.x)},${scaleY(p.y)}`).join(" ");
+  const xAxisY = height - pad.bottom;
 
   const yTicks = [0, 25, 50, 75, 100]
     .map((tick) => {
@@ -718,20 +719,28 @@ function retentionChartMarkup(row) {
     })
     .join("");
 
-  const xTicks = [0, 15, 30, 45, 60, 75, 90]
-    .filter((tick) => tick <= maxX)
+  const xTicks = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
     .map((tick) => {
       const x = scaleX(tick);
-      return `<text x="${x}" y="${height - 10}" class="axis-label" text-anchor="middle">${tick}s</text>`;
+      return `
+        <line x1="${x}" y1="${xAxisY}" x2="${x}" y2="${xAxisY + 5}" class="tick-line"></line>
+        <text x="${x}" y="${height - 20}" class="axis-label" text-anchor="middle">${tick}s</text>
+      `;
     })
+    .join("");
+  const pointDots = points
+    .map((p) => `<circle cx="${scaleX(p.x)}" cy="${scaleY(p.y)}" r="1.8" class="point-dot"></circle>`)
     .join("");
 
   return `
     <svg viewBox="0 0 ${width} ${height}" class="insight-chart" role="img" aria-label="Retention curve">
       <rect x="${pad.left}" y="${pad.top}" width="${innerW}" height="${innerH}" class="chart-bg"></rect>
       ${yTicks}
+      <line x1="${pad.left}" y1="${xAxisY}" x2="${width - pad.right}" y2="${xAxisY}" class="axis-line"></line>
       <polyline points="${poly}" class="line-path"></polyline>
+      ${pointDots}
       ${xTicks}
+      <text x="${pad.left + innerW / 2}" y="${height - 6}" class="axis-title" text-anchor="middle">Seconds (s)</text>
     </svg>
   `;
 }

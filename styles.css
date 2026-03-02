@@ -517,6 +517,26 @@ label.field.full {
   font-size: 10px;
 }
 
+.axis-title {
+  fill: rgba(30, 42, 56, 0.75);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.axis-line {
+  stroke: rgba(30, 42, 56, 0.35);
+  stroke-width: 1;
+}
+
+.tick-line {
+  stroke: rgba(30, 42, 56, 0.35);
+  stroke-width: 1;
+}
+
+.point-dot {
+  fill: #f5a622;
+}
+
 .line-path {
   fill: none;
   stroke: #f5a622;

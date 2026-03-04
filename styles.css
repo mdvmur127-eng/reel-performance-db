@@ -453,7 +453,7 @@ label.field.full {
 .kpi-grid {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
 }
 
@@ -473,6 +473,10 @@ label.field.full {
 
 .kpi strong {
   font-size: 15px;
+}
+
+.kpi-wide {
+  grid-column: span 2;
 }
 
 .insights-grid {
@@ -624,7 +628,7 @@ label.field.full {
   }
 
   .kpi-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .insights-grid {
@@ -654,7 +658,11 @@ label.field.full {
   }
 
   .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-wide {
+    grid-column: span 1;
   }
 
   .bar-row {

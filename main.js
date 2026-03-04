@@ -682,6 +682,12 @@ function percentDisplay(value) {
   return `${roundPercent(numeric)}%`;
 }
 
+function timeMetricDisplay(value) {
+  const numeric = toNumberOrNull(value);
+  if (numeric === null) return "-";
+  return formatSeconds(numeric);
+}
+
 function pointsFromRetention(row) {
   const points = [];
   for (let second = 0; second <= 90; second += 1) {
@@ -790,6 +796,10 @@ function renderReelInsights(row) {
   const womenPct = roundPercent(100 - menPct);
   const followerPct = normalizePercent(row.views_followers) ?? 0;
   const nonFollowerPct = roundPercent(100 - followerPct);
+  const views = metricNumber(row.views);
+  const reached = metricNumber(row.accounts_reached);
+  const engagementTotal = metricNumber(row.likes) + metricNumber(row.comments) + metricNumber(row.saves) + metricNumber(row.shares);
+  const engagementRate = views > 0 ? roundPercent((engagementTotal / views) * 100) : 0;
 
   const engagementBars = barsMarkup([
     { label: "Views", value: metricNumber(row.views) },
@@ -802,6 +812,15 @@ function renderReelInsights(row) {
 
   const countryRows = parseBreakdown(row.audience_country);
   const ageRows = parseBreakdown(row.audience_age);
+  const topCountry = [...countryRows].sort((a, b) => metricNumber(b.value) - metricNumber(a.value))[0] || null;
+  const topAge = [...ageRows].sort((a, b) => metricNumber(b.value) - metricNumber(a.value))[0] || null;
+  const audienceSummary = [
+    Number.isFinite(menPct) ? `Men ${roundPercent(menPct)}% / Women ${roundPercent(womenPct)}%` : "",
+    topCountry ? `Top country: ${topCountry.label} ${roundPercent(metricNumber(topCountry.value))}%` : "",
+    topAge ? `Top age: ${topAge.label} ${roundPercent(metricNumber(topAge.value))}%` : "",
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   insightsContentEl.innerHTML = `
     <div class="insights-head">
@@ -813,12 +832,11 @@ function renderReelInsights(row) {
     </div>
 
     <div class="kpi-grid">
-      <div class="kpi"><span>Views</span><strong>${escapeHtml(metricDisplay(row.views))}</strong></div>
-      <div class="kpi"><span>Reached</span><strong>${escapeHtml(metricDisplay(row.accounts_reached))}</strong></div>
-      <div class="kpi"><span>Engagements</span><strong>${escapeHtml(metricDisplay(metricNumber(row.likes) + metricNumber(row.comments) + metricNumber(row.saves) + metricNumber(row.shares)))}</strong></div>
-      <div class="kpi"><span>Avg Watch</span><strong>${escapeHtml(cardValue(row.average_watch_time))}</strong></div>
-      <div class="kpi"><span>Skip Rate</span><strong>${escapeHtml(percentDisplay(metricNumber(row.reel_skip_rate)))}</strong></div>
-      <div class="kpi"><span>Typical Skip</span><strong>${escapeHtml(percentDisplay(metricNumber(row.typical_skip_rate)))}</strong></div>
+      <div class="kpi"><span>Views</span><strong>${escapeHtml(metricDisplay(views))}</strong></div>
+      <div class="kpi"><span>Average Watch Time</span><strong>${escapeHtml(timeMetricDisplay(row.average_watch_time))}</strong></div>
+      <div class="kpi"><span>Engagement Rate</span><strong>${escapeHtml(percentDisplay(engagementRate))}</strong></div>
+      <div class="kpi"><span>Accounts Reached</span><strong>${escapeHtml(metricDisplay(reached))}</strong></div>
+      <div class="kpi kpi-wide"><span>Audience Snapshot</span><strong>${escapeHtml(audienceSummary || "No audience data yet")}</strong></div>
     </div>
 
     <div class="insights-grid">

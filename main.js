@@ -836,6 +836,70 @@ function audienceSummaryText(row) {
   return parts.length ? parts.join(" • ") : "-";
 }
 
+function reelSummaryCopy({
+  views,
+  reached,
+  viewToReachRatio,
+  avgWatchSec,
+  avgWatchPct,
+  engagementRate,
+  engagementTotal,
+  audienceSummary,
+  retention3,
+  completionRate,
+  followRateByViews,
+}) {
+  const avgWatchLabel =
+    avgWatchSec === null
+      ? "not provided"
+      : `${timeMetricDisplay(avgWatchSec)}${avgWatchPct === null ? "" : ` (${percentDisplay(avgWatchPct)} of duration)`}`;
+  const overview = `Performance snapshot: ${metricDisplay(views)} views from ${metricDisplay(reached)} reached accounts${
+    viewToReachRatio === null ? "" : ` (${numberDisplay(viewToReachRatio)}x view-to-reach)`
+  }. Avg watch ${avgWatchLabel}. Engagement rate ${percentDisplay(engagementRate)} (${metricDisplay(
+    engagementTotal,
+  )} interactions). Audience: ${audienceSummary || "not provided"}.`;
+
+  const bottleneckCandidates = [];
+  if (retention3 !== null) {
+    bottleneckCandidates.push({
+      score: Math.max(0, 45 - retention3),
+      text: `Hook retention is the bottleneck: 3-second retention is ${percentDisplay(retention3)} (target >=45%).`,
+    });
+  }
+  if (avgWatchPct !== null) {
+    bottleneckCandidates.push({
+      score: Math.max(0, 35 - avgWatchPct),
+      text: `Watch depth is the bottleneck: average watch is ${percentDisplay(avgWatchPct)} of total duration.`,
+    });
+  }
+  if (engagementRate !== null) {
+    bottleneckCandidates.push({
+      score: Math.max(0, 3 - engagementRate),
+      text: `Engagement is the bottleneck: engagement rate is ${percentDisplay(engagementRate)} (target >=3%).`,
+    });
+  }
+  if (followRateByViews !== null) {
+    bottleneckCandidates.push({
+      score: Math.max(0, 1 - followRateByViews),
+      text: `Follower conversion is the bottleneck: follows are ${percentDisplay(followRateByViews)} of views.`,
+    });
+  }
+  if (completionRate !== null) {
+    bottleneckCandidates.push({
+      score: Math.max(0, 20 - completionRate),
+      text: `Completion is the bottleneck: end-of-video retention is ${percentDisplay(completionRate)} (target >=20%).`,
+    });
+  }
+
+  const topBottleneck = [...bottleneckCandidates].sort((a, b) => b.score - a.score)[0];
+  const bottleneck =
+    topBottleneck && topBottleneck.score > 0
+      ? topBottleneck.text
+      : "No critical bottleneck detected from entered data; next lift should come from higher saves and shares.";
+
+  return { overview, bottleneck };
+}
+
 function pointsFromRetention(row) {
   const points = [];
   for (let second = 0; second <= 90; second += 1) {
@@ -948,6 +1012,13 @@ function renderReelInsights(row) {
   const reached = metricNumber(row.accounts_reached);
   const engagementTotal = metricNumber(row.likes) + metricNumber(row.comments) + metricNumber(row.saves) + metricNumber(row.shares);
   const engagementRate = engagementRateValue(row);
+  const durationSec = toNumberOrNull(row.duration);
+  const avgWatchSec = toNumberOrNull(row.average_watch_time);
+  const avgWatchPct = durationSec && durationSec > 0 && avgWatchSec !== null ? roundPercent((avgWatchSec / durationSec) * 100) : null;
+  const retention3 = retentionAt(row, 3);
+  const completionRate = lastRetentionPoint(row, durationSec);
+  const followRateByViews = ratioPercent(row.follows, row.views);
+  const viewToReachRatio = reached > 0 ? roundPercent(views / reached) : null;
 
   const engagementBars = barsMarkup([
     { label: "Views", value: metricNumber(row.views) },
@@ -969,6 +1040,19 @@ function renderReelInsights(row) {
   ]
     .filter(Boolean)
     .join(" • ");
+  const summary = reelSummaryCopy({
+    views,
+    reached,
+    viewToReachRatio,
+    avgWatchSec,
+    avgWatchPct,
+    engagementRate,
+    engagementTotal,
+    audienceSummary,
+    retention3,
+    completionRate,
+    followRateByViews,
+  });
   const derived = derivedMetrics(row);
   const grouped = derived.reduce((acc, item) => {
     if (!acc[item.group]) acc[item.group] = [];
@@ -1005,6 +1089,12 @@ function renderReelInsights(row) {
       </div>
       ${safeUrl ? `<a class="table-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open Reel</a>` : ""}
     </div>
+
+    <section class="insights-summary">
+      <h5>Summary</h5>
+      <p><strong>Overview:</strong> ${escapeHtml(summary.overview)}</p>
+      <p><strong>Key bottleneck:</strong> ${escapeHtml(summary.bottleneck)}</p>
+    </section>
 
     <div class="kpi-grid">
       <div class="kpi"><span>Views</span><strong>${escapeHtml(metricDisplay(views))}</strong></div>

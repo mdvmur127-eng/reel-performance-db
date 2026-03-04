@@ -492,6 +492,28 @@ label.field.full {
   font-size: 16px;
 }
 
+.insights-summary {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(245, 166, 34, 0.08);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.insights-summary h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.insights-summary p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--navy);
+}
+
 .kpi-grid {
   margin-top: 10px;
   display: grid;

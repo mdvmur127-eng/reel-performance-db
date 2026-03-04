@@ -1115,13 +1115,19 @@ listEl.addEventListener("click", async (event) => {
 
   const actionNode = target.closest("[data-action]");
   const action = actionNode?.getAttribute("data-action");
-  if (!action) return;
-
-  const rowNode = actionNode?.closest("[data-id]");
+  const rowNode = (actionNode?.closest("[data-id]")) || target.closest("[data-id]");
   if (!rowNode) return;
 
   const id = String(rowNode.getAttribute("data-id") || "").trim();
   if (!id) return;
+
+  // Click anywhere in row selects reel insights, except direct anchor clicks.
+  if (!action) {
+    if (target.closest("a")) return;
+    selectedInsightId = id;
+    renderList(cachedRows);
+    return;
+  }
 
   if (action === "insight") {
     selectedInsightId = id;

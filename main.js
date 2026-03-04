@@ -688,6 +688,34 @@ function timeMetricDisplay(value) {
   return formatSeconds(numeric);
 }
 
+function engagementRateValue(row) {
+  const views = metricNumber(row?.views);
+  if (views <= 0) return 0;
+  const engagements = metricNumber(row?.likes) + metricNumber(row?.comments) + metricNumber(row?.saves) + metricNumber(row?.shares);
+  return roundPercent((engagements / views) * 100);
+}
+
+function audienceSummaryText(row) {
+  const menPct = clamp((normalizeSexRatio(row?.audience_men) || 0) * 100, 0, 100);
+  const womenPct = roundPercent(100 - menPct);
+  const countryRows = parseBreakdown(row?.audience_country);
+  const ageRows = parseBreakdown(row?.audience_age);
+  const topCountry = [...countryRows].sort((a, b) => metricNumber(b.value) - metricNumber(a.value))[0] || null;
+  const topAge = [...ageRows].sort((a, b) => metricNumber(b.value) - metricNumber(a.value))[0] || null;
+
+  const parts = [];
+  if (row?.audience_men !== null || row?.audience_women !== null) {
+    parts.push(`M ${roundPercent(menPct)}% / W ${roundPercent(womenPct)}%`);
+  }
+  if (topCountry) {
+    parts.push(`${topCountry.label} ${roundPercent(metricNumber(topCountry.value))}%`);
+  }
+  if (topAge) {
+    parts.push(`${topAge.label} ${roundPercent(metricNumber(topAge.value))}%`);
+  }
+  return parts.length ? parts.join(" • ") : "-";
+}
+
 function pointsFromRetention(row) {
   const points = [];
   for (let second = 0; second <= 90; second += 1) {
@@ -799,7 +827,7 @@ function renderReelInsights(row) {
   const views = metricNumber(row.views);
   const reached = metricNumber(row.accounts_reached);
   const engagementTotal = metricNumber(row.likes) + metricNumber(row.comments) + metricNumber(row.saves) + metricNumber(row.shares);
-  const engagementRate = views > 0 ? roundPercent((engagementTotal / views) * 100) : 0;
+  const engagementRate = engagementRateValue(row);
 
   const engagementBars = barsMarkup([
     { label: "Views", value: metricNumber(row.views) },
@@ -887,6 +915,8 @@ function renderList(rows) {
       const url = String(row.url || "").trim();
       const safeUrl = /^https?:\/\//i.test(url) ? url : "";
       const isSelected = String(selectedInsightId || "") === String(row.id);
+      const rowEngagementRate = engagementRateValue(row);
+      const rowAudience = audienceSummaryText(row);
       return `
         <tr data-id="${escapeHtml(String(row.id))}" class="${isSelected ? "is-selected" : ""}">
           <td class="reel-title-cell">
@@ -894,15 +924,10 @@ function renderList(rows) {
           </td>
           <td>${escapeHtml(toDisplayDate(row.published_at))}</td>
           <td>${safeUrl ? `<a class="table-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : "-"}</td>
-          <td>${escapeHtml(cardValue(row.views))}</td>
-          <td>${escapeHtml(cardValue(row.likes))}</td>
-          <td>${escapeHtml(cardValue(row.comments))}</td>
-          <td>${escapeHtml(cardValue(row.saves))}</td>
-          <td>${escapeHtml(cardValue(row.shares))}</td>
-          <td>${escapeHtml(cardValue(row.follows))}</td>
-          <td>${escapeHtml(cardValue(row.accounts_reached))}</td>
-          <td>${escapeHtml(ratioToPercentString(row.audience_men))}</td>
-          <td>${escapeHtml(ratioToPercentString(row.audience_women))}</td>
+          <td>${escapeHtml(metricDisplay(row.views))}</td>
+          <td>${escapeHtml(timeMetricDisplay(row.average_watch_time))}</td>
+          <td>${escapeHtml(percentDisplay(rowEngagementRate))}</td>
+          <td class="audience-col">${escapeHtml(rowAudience)}</td>
           <td>
             <div class="row-actions">
               <button type="button" class="row-btn secondary" data-action="edit">Edit</button>
@@ -923,14 +948,9 @@ function renderList(rows) {
             <th>Date</th>
             <th>URL</th>
             <th>Views</th>
-            <th>Likes</th>
-            <th>Comments</th>
-            <th>Saves</th>
-            <th>Shares</th>
-            <th>Follows</th>
-            <th>Reached</th>
-            <th>Men</th>
-            <th>Women</th>
+            <th>Avg Watch</th>
+            <th>Engagement Rate</th>
+            <th>Audience</th>
             <th>Actions</th>
           </tr>
         </thead>

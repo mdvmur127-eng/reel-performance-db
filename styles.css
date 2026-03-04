@@ -348,7 +348,7 @@ label.field.full {
 
 .reels-table {
   width: 100%;
-  min-width: 1160px;
+  min-width: 980px;
   border-collapse: collapse;
   background: var(--white);
 }
@@ -384,6 +384,11 @@ label.field.full {
   max-width: 320px;
   white-space: normal;
   font-weight: 600;
+}
+
+.audience-col {
+  max-width: 320px;
+  white-space: normal;
 }
 
 .title-link-btn {

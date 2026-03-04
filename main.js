@@ -921,7 +921,10 @@ function retentionChartMarkup(row) {
   const pad = { left: 42, right: 18, top: 14, bottom: 44 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
-  const maxX = 90;
+  const durationSec = toNumberOrNull(row?.duration);
+  const maxDataX = points[points.length - 1]?.x ?? 0;
+  const boundedDuration = durationSec === null ? null : clamp(Math.round(durationSec), 1, 90);
+  const maxX = Math.max(1, boundedDuration === null ? maxDataX : Math.max(boundedDuration, maxDataX));
   const scaleX = (x) => pad.left + (x / maxX) * innerW;
   const scaleY = (y) => pad.top + ((100 - y) / 100) * innerH;
   const poly = points.map((p) => `${scaleX(p.x)},${scaleY(p.y)}`).join(" ");
@@ -937,17 +940,34 @@ function retentionChartMarkup(row) {
     })
     .join("");
 
-  const xTicks = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+  const tickStep = maxX <= 12 ? 1 : maxX <= 24 ? 2 : maxX <= 45 ? 5 : 10;
+  const tickValues = [0];
+  for (let tick = tickStep; tick < maxX; tick += tickStep) tickValues.push(tick);
+  if (tickValues[tickValues.length - 1] !== maxX) tickValues.push(maxX);
+
+  const xTicks = tickValues
     .map((tick) => {
       const x = scaleX(tick);
       return `
         <line x1="${x}" y1="${xAxisY}" x2="${x}" y2="${xAxisY + 5}" class="tick-line"></line>
-        <text x="${x}" y="${height - 20}" class="axis-label" text-anchor="middle">${tick}s</text>
+        <text x="${x}" y="${height - 20}" class="axis-label" text-anchor="middle">${roundPercent(tick)}s</text>
       `;
     })
     .join("");
   const pointDots = points
-    .map((p) => `<circle cx="${scaleX(p.x)}" cy="${scaleY(p.y)}" r="1.8" class="point-dot"></circle>`)
+    .map((p) => {
+      const x = scaleX(p.x);
+      const y = scaleY(p.y);
+      const label = `${p.x}s • ${roundPercent(p.y)}% retention`;
+      return `
+        <g class="point-hover">
+          <circle cx="${x}" cy="${y}" r="7" class="point-hit">
+            <title>${escapeHtml(label)}</title>
+          </circle>
+          <circle cx="${x}" cy="${y}" r="2" class="point-dot"></circle>
+        </g>
+      `;
+    })
     .join("");
 
   return `

@@ -605,6 +605,11 @@ label.field.full {
   fill: #f5a622;
 }
 
+.point-hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
 .line-path {
   fill: none;
   stroke: #f5a622;

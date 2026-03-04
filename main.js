@@ -688,6 +688,126 @@ function timeMetricDisplay(value) {
   return formatSeconds(numeric);
 }
 
+function ratioPercent(numerator, denominator) {
+  const n = metricNumber(numerator);
+  const d = metricNumber(denominator);
+  if (d <= 0) return null;
+  return roundPercent((n / d) * 100);
+}
+
+function perThousand(value, base) {
+  const v = metricNumber(value);
+  const b = metricNumber(base);
+  if (b <= 0) return null;
+  return roundPercent((v / b) * 1000);
+}
+
+function numberDisplay(value) {
+  const numeric = toNumberOrNull(value);
+  if (numeric === null) return "-";
+  return String(roundPercent(numeric));
+}
+
+function safeRatio(valueA, valueB) {
+  const a = metricNumber(valueA);
+  const b = metricNumber(valueB);
+  const total = a + b;
+  if (total <= 0) return "-";
+  return `${roundPercent((a / total) * 100)}:${roundPercent((b / total) * 100)}`;
+}
+
+function safeMix3(a, b, c) {
+  const av = metricNumber(a);
+  const bv = metricNumber(b);
+  const cv = metricNumber(c);
+  const total = av + bv + cv;
+  if (total <= 0) return "-";
+  return `${roundPercent((av / total) * 100)}:${roundPercent((bv / total) * 100)}:${roundPercent((cv / total) * 100)}`;
+}
+
+function retentionAt(row, second) {
+  const v = toNumberOrNull(row?.[`sec_${second}`]);
+  if (v === null) return null;
+  return clamp(v, 0, 100);
+}
+
+function averageRetentionPoints(row, seconds) {
+  const values = seconds.map((s) => retentionAt(row, s)).filter((v) => v !== null);
+  if (!values.length) return null;
+  return roundPercent(values.reduce((sum, v) => sum + v, 0) / values.length);
+}
+
+function lastRetentionPoint(row, durationSec = null) {
+  if (durationSec !== null) {
+    const bounded = clamp(Math.round(durationSec), 0, 90);
+    for (let s = bounded; s >= 0; s -= 1) {
+      const v = retentionAt(row, s);
+      if (v !== null) return v;
+    }
+  }
+  for (let s = 90; s >= 0; s -= 1) {
+    const v = retentionAt(row, s);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+function derivedMetrics(row) {
+  const views = metricNumber(row.views);
+  const reach = metricNumber(row.accounts_reached);
+  const likes = metricNumber(row.likes);
+  const comments = metricNumber(row.comments);
+  const saves = metricNumber(row.saves);
+  const shares = metricNumber(row.shares);
+  const follows = metricNumber(row.follows);
+  const engagements = likes + comments + saves + shares;
+
+  const durationSec = toNumberOrNull(row.duration);
+  const avgWatchSec = toNumberOrNull(row.average_watch_time);
+  const retention0 = retentionAt(row, 0);
+  const retention3 = retentionAt(row, 3);
+  const retention5 = retentionAt(row, 5);
+  const completion = lastRetentionPoint(row, durationSec);
+  const durationForMid = durationSec && durationSec > 0 ? durationSec : null;
+  const midSeconds =
+    durationForMid === null
+      ? []
+      : [0.1, 0.2, 0.3, 0.4, 0.5].map((ratio) => clamp(Math.round(durationForMid * ratio), 0, 90));
+  const midVideoRetention = averageRetentionPoints(row, midSeconds);
+  const avgWatchPct = durationSec && durationSec > 0 && avgWatchSec !== null ? roundPercent((avgWatchSec / durationSec) * 100) : null;
+
+  return [
+    { group: "Reach & Distribution", label: "View-to-Reach Ratio", value: percentDisplay(ratioPercent(views, reach)) },
+    { group: "Reach & Distribution", label: "Follower View Rate", value: percentDisplay(normalizePercent(row.views_followers)) },
+    { group: "Reach & Distribution", label: "Non-Follower View Rate", value: percentDisplay(normalizePercent(row.views_non_followers)) },
+
+    { group: "Retention", label: "3-Second Retention Rate", value: percentDisplay(retention3) },
+    { group: "Retention", label: "5-Second Retention Rate", value: percentDisplay(retention5) },
+    { group: "Retention", label: "Average Watch % (avg watch ÷ duration)", value: percentDisplay(avgWatchPct) },
+    { group: "Retention", label: "Completion Rate", value: percentDisplay(completion) },
+    { group: "Retention", label: "Early Drop-Off Rate (0–3s loss)", value: retention0 === null || retention3 === null ? "-" : percentDisplay(retention0 - retention3) },
+    { group: "Retention", label: "Mid-Video Retention (10–50%)", value: percentDisplay(midVideoRetention) },
+
+    { group: "Engagement", label: "Engagement Rate by Views", value: percentDisplay(ratioPercent(engagements, views)) },
+    { group: "Engagement", label: "Engagement Rate by Reach", value: percentDisplay(ratioPercent(engagements, reach)) },
+    { group: "Engagement", label: "Like Rate", value: percentDisplay(ratioPercent(likes, views)) },
+    { group: "Engagement", label: "Comment Rate", value: percentDisplay(ratioPercent(comments, views)) },
+    { group: "Engagement", label: "Share Rate", value: percentDisplay(ratioPercent(shares, views)) },
+    { group: "Engagement", label: "Save Rate", value: percentDisplay(ratioPercent(saves, views)) },
+
+    { group: "Growth", label: "Follow Conversion Rate (follows ÷ views)", value: percentDisplay(ratioPercent(follows, views)) },
+    { group: "Growth", label: "Follow Conversion Rate (follows ÷ reach)", value: percentDisplay(ratioPercent(follows, reach)) },
+
+    { group: "Virality Signals", label: "Shares per 1,000 Views", value: numberDisplay(perThousand(shares, views)) },
+    { group: "Virality Signals", label: "Saves per 1,000 Views", value: numberDisplay(perThousand(saves, views)) },
+    { group: "Virality Signals", label: "Engagement per 1,000 Views", value: numberDisplay(perThousand(engagements, views)) },
+
+    { group: "Content Quality Indicators", label: "Rewatch Rate (views ÷ reach)", value: numberDisplay(reach > 0 ? roundPercent(views / reach) : null) },
+    { group: "Content Quality Indicators", label: "Watch Time Efficiency (avg watch ÷ duration)", value: numberDisplay(durationSec && durationSec > 0 && avgWatchSec !== null ? roundPercent(avgWatchSec / durationSec) : null) },
+    { group: "Content Quality Indicators", label: "Interaction Mix (likes:saves:shares)", value: safeMix3(likes, saves, shares) },
+  ];
+}
+
 function engagementRateValue(row) {
   const views = metricNumber(row?.views);
   if (views <= 0) return 0;
@@ -849,6 +969,33 @@ function renderReelInsights(row) {
   ]
     .filter(Boolean)
     .join(" • ");
+  const derived = derivedMetrics(row);
+  const grouped = derived.reduce((acc, item) => {
+    if (!acc[item.group]) acc[item.group] = [];
+    acc[item.group].push(item);
+    return acc;
+  }, {});
+  const derivedMarkup = Object.entries(grouped)
+    .map(
+      ([group, items]) => `
+        <section class="derived-group">
+          <h6>${escapeHtml(group)}</h6>
+          <div class="derived-grid">
+            ${items
+              .map(
+                (item) => `
+                  <div class="derived-item">
+                    <span>${escapeHtml(item.label)}</span>
+                    <strong>${escapeHtml(item.value)}</strong>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </section>
+      `,
+    )
+    .join("");
 
   insightsContentEl.innerHTML = `
     <div class="insights-head">
@@ -898,6 +1045,11 @@ function renderReelInsights(row) {
       <section class="insight-card">
         <h5>Age Groups</h5>
         <div class="bar-list">${percentageBarsMarkup(ageRows)}</div>
+      </section>
+
+      <section class="insight-card full">
+        <h5>Derived Metrics (from entered data)</h5>
+        <div class="derived-wrap">${derivedMarkup}</div>
       </section>
     </div>
   `;

@@ -19,36 +19,41 @@
         </div>
       </header>
 
-      <section class="panel">
-        <div class="section-head">
+      <details class="panel panel-collapsible" open>
+        <summary class="section-head collapsible-summary">
           <h2 id="form-title">Add Reel</h2>
-          <button id="cancel-edit-btn" type="button" class="secondary hidden">Cancel Edit</button>
-        </div>
-
-        <form id="reel-form" class="form-grid" method="post" action="#">
-          <div id="fields-basic" class="field-grid"></div>
-
-          <details class="details" open>
-            <summary>Performance Metrics</summary>
-            <div id="fields-performance" class="field-grid"></div>
-          </details>
-
-          <details class="details">
-            <summary>Audience & Distribution</summary>
-            <div id="fields-audience" class="field-grid"></div>
-          </details>
-
-          <details class="details">
-            <summary>Retention Curve (0s to 90s)</summary>
-            <div id="fields-seconds" class="seconds-grid"></div>
-          </details>
-
-          <div class="form-actions">
-            <button id="save-btn" type="submit">Save Reel</button>
+        </summary>
+        <div class="collapsible-content">
+          <div class="section-head section-head-inline">
+            <span class="meta"></span>
+            <button id="cancel-edit-btn" type="button" class="secondary hidden">Cancel Edit</button>
           </div>
-        </form>
-        <p id="form-status" class="meta"></p>
-      </section>
+
+          <form id="reel-form" class="form-grid" method="post" action="#">
+            <div id="fields-basic" class="field-grid"></div>
+
+            <details class="details" open>
+              <summary>Performance Metrics</summary>
+              <div id="fields-performance" class="field-grid"></div>
+            </details>
+
+            <details class="details">
+              <summary>Audience & Distribution</summary>
+              <div id="fields-audience" class="field-grid"></div>
+            </details>
+
+            <details class="details">
+              <summary>Retention Curve (0s to 90s)</summary>
+              <div id="fields-seconds" class="seconds-grid"></div>
+            </details>
+
+            <div class="form-actions">
+              <button id="save-btn" type="submit">Save Reel</button>
+            </div>
+          </form>
+          <p id="form-status" class="meta"></p>
+        </div>
+      </details>
 
       <section class="panel">
         <div class="section-head">

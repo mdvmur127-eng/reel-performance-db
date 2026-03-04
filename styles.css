@@ -78,6 +78,43 @@ h2 {
   margin-bottom: 10px;
 }
 
+.section-head-inline {
+  margin-bottom: 10px;
+}
+
+.panel-collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.panel-collapsible > summary {
+  list-style: none;
+  cursor: pointer;
+  margin: 0;
+  padding: 16px;
+}
+
+.panel-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-collapsible > summary::before {
+  content: "▾";
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  transform: translateY(-1px);
+}
+
+.panel-collapsible:not([open]) > summary::before {
+  content: "▸";
+}
+
+.panel-collapsible > .collapsible-content {
+  padding: 0 16px 16px;
+}
+
 .meta {
   margin: 8px 0 0;
   color: var(--muted);
@@ -660,6 +697,14 @@ label.field.full {
   .section-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .panel-collapsible > summary {
+    padding: 14px;
+  }
+
+  .panel-collapsible > .collapsible-content {
+    padding: 0 14px 14px;
   }
 
   .kpi-grid {

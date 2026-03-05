@@ -4,6 +4,7 @@ const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REQUEST_TIMEOUT_MS = 15000;
+const IG_SYNC_TIMEOUT_MS = 90000;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -14,6 +15,7 @@ const saveBtn = document.getElementById("save-btn");
 const formStatusEl = document.getElementById("form-status");
 const listEl = document.getElementById("reels-list");
 const refreshBtn = document.getElementById("refresh-btn");
+const syncIgReelsBtn = document.getElementById("sync-ig-reels-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const basicFieldsEl = document.getElementById("fields-basic");
@@ -102,6 +104,12 @@ function setStatus(message, isError = false) {
 function setSaving(isSaving) {
   saveBtn.disabled = isSaving;
   saveBtn.textContent = isSaving ? "Saving..." : editId ? "Update Reel" : "Save Reel";
+}
+
+function setSyncingIg(isSyncing) {
+  if (!(syncIgReelsBtn instanceof HTMLButtonElement)) return;
+  syncIgReelsBtn.disabled = isSyncing;
+  syncIgReelsBtn.textContent = isSyncing ? "Syncing IG..." : "Sync IG Reels (20)";
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out") {
@@ -1257,6 +1265,52 @@ async function refreshList() {
   }
 }
 
+async function syncInstagramReelsLast20() {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+
+  setSyncingIg(true);
+  setStatus("Syncing latest 20 IG reels...");
+  try {
+    const { data: sessionData, error: sessionError } = await withTimeout(
+      supabase.auth.getSession(),
+      REQUEST_TIMEOUT_MS,
+      "Session check timed out",
+    );
+    if (sessionError) throw sessionError;
+
+    const accessToken = String(sessionData?.session?.access_token || "").trim();
+    if (!accessToken) {
+      throw new Error("Session expired. Please log in again.");
+    }
+
+    const response = await withTimeout(
+      fetch("/api/instagram/sync-reels", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }),
+      IG_SYNC_TIMEOUT_MS,
+      "Instagram sync timed out",
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(String(payload?.error || `Sync failed (${response.status})`));
+    }
+
+    await refreshList();
+    setStatus(`IG sync complete: ${metricDisplay(payload.synced)} synced (${metricDisplay(payload.new)} new, ${metricDisplay(payload.updated)} updated).`);
+  } catch (error) {
+    console.error(error);
+    setStatus(`IG sync failed: ${error?.message || "unknown error"}`, true);
+  } finally {
+    setSyncingIg(false);
+  }
+}
+
 function parseMissingColumn(errorMessage) {
   const message = String(errorMessage || "");
   const match = message.match(/Could not find the '([^']+)' column/i);
@@ -1384,6 +1438,12 @@ refreshBtn.addEventListener("click", async () => {
   await refreshList();
   setStatus("Reels refreshed.");
 });
+
+if (syncIgReelsBtn instanceof HTMLButtonElement) {
+  syncIgReelsBtn.addEventListener("click", async () => {
+    await syncInstagramReelsLast20();
+  });
+}
 
 listEl.addEventListener("click", async (event) => {
   const rawTarget = event.target;

@@ -19,6 +19,7 @@ const INSIGHT_REFRESH_MS = 60 * 60 * 1000;
 const INSIGHT_CONCURRENCY = 4;
 const INSIGHT_REQUEST_GAP_MS = 120;
 const UPSERT_BATCH_SIZE = 100;
+const REELS_SYNC_LIMIT = 20;
 
 function json(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -91,6 +92,7 @@ module.exports = async function handler(req, res) {
     const reels = await fetchAllReels({
       igUserId: connection.instagram_user_id,
       accessToken: connection.access_token,
+      maxItems: REELS_SYNC_LIMIT,
     });
 
     if (!reels.length) {

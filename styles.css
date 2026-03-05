@@ -78,6 +78,13 @@ h2 {
   margin-bottom: 10px;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .section-head-inline {
   margin-bottom: 10px;
 }

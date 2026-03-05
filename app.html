@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reels DB</title>
-    <link rel="stylesheet" href="/styles.css?v=20260301b" />
+    <link rel="stylesheet" href="/styles.css?v=20260305a" />
   </head>
   <body>
     <main class="app">
@@ -58,7 +58,10 @@
       <section class="panel">
         <div class="section-head">
           <h2>Saved Reels</h2>
-          <button id="refresh-btn" type="button" class="secondary">Refresh</button>
+          <div class="section-actions">
+            <button id="sync-ig-reels-btn" type="button" class="secondary">Sync IG Reels (20)</button>
+            <button id="refresh-btn" type="button" class="secondary">Refresh</button>
+          </div>
         </div>
         <div id="reels-list" class="list"></div>
         <section id="reel-insights-panel" class="reel-insights-panel">
@@ -69,6 +72,6 @@
       </section>
     </main>
 
-    <script type="module" src="/main.js?v=20260301b"></script>
+    <script type="module" src="/main.js?v=20260305a"></script>
   </body>
 </html>

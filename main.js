@@ -17,6 +17,7 @@ const listEl = document.getElementById("reels-list");
 const refreshBtn = document.getElementById("refresh-btn");
 const connectIgBtn = document.getElementById("connect-ig-btn");
 const syncIgReelsBtn = document.getElementById("sync-ig-reels-btn");
+const igAppIdInput = document.getElementById("ig-app-id-input");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const basicFieldsEl = document.getElementById("fields-basic");
@@ -38,6 +39,7 @@ const MIN_COUNTRY_ROWS = 1;
 const MAX_COUNTRY_ROWS = 15;
 const TOTAL_PERCENT = 100;
 const PERCENT_TOLERANCE = 0.01;
+const IG_APP_ID_STORAGE_KEY = "rpd_instagram_app_id";
 
 const BASIC_FIELDS = [
   { key: "published_at", label: "Date", type: "datetime-local", required: true },
@@ -119,6 +121,11 @@ function setConnectingIg(isConnecting) {
   connectIgBtn.textContent = isConnecting ? "Connecting..." : "Connect IG";
 }
 
+function getAppIdOverride() {
+  if (!(igAppIdInput instanceof HTMLInputElement)) return "";
+  return String(igAppIdInput.value || "").trim();
+}
+
 async function getSessionAccessToken() {
   const { data: sessionData, error: sessionError } = await withTimeout(
     supabase.auth.getSession(),
@@ -143,6 +150,14 @@ async function connectInstagramOAuth() {
   setConnectingIg(true);
   setStatus("Starting Instagram connect...");
   try {
+    const appIdOverride = getAppIdOverride();
+    if (appIdOverride) {
+      try {
+        localStorage.setItem(IG_APP_ID_STORAGE_KEY, appIdOverride);
+      } catch (_) {
+        // Ignore storage failures.
+      }
+    }
     const accessToken = await getSessionAccessToken();
     const response = await withTimeout(
       fetch("/api/instagram/connect", {
@@ -151,7 +166,7 @@ async function connectInstagramOAuth() {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify(appIdOverride ? { appId: appIdOverride } : {}),
       }),
       REQUEST_TIMEOUT_MS,
       "Instagram connect timed out",
@@ -164,6 +179,9 @@ async function connectInstagramOAuth() {
   } catch (error) {
     console.error(error);
     setStatus(`IG connect failed: ${error?.message || "unknown error"}`, true);
+    if (/missing app id/i.test(String(error?.message || "")) && igAppIdInput instanceof HTMLInputElement) {
+      igAppIdInput.focus();
+    }
     setConnectingIg(false);
   }
 }
@@ -1569,6 +1587,21 @@ logoutBtn.addEventListener("click", async () => {
 async function init() {
   renderFormFields(null);
   setStatus("Ready.");
+  if (igAppIdInput instanceof HTMLInputElement) {
+    try {
+      const saved = localStorage.getItem(IG_APP_ID_STORAGE_KEY) || "";
+      if (saved) igAppIdInput.value = saved;
+    } catch (_) {
+      // Ignore storage failures.
+    }
+    igAppIdInput.addEventListener("input", () => {
+      try {
+        localStorage.setItem(IG_APP_ID_STORAGE_KEY, igAppIdInput.value.trim());
+      } catch (_) {
+        // Ignore storage failures.
+      }
+    });
+  }
 
   const { data, error } = await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out");
   if (error || !data?.user) {

@@ -15,6 +15,7 @@ const saveBtn = document.getElementById("save-btn");
 const formStatusEl = document.getElementById("form-status");
 const listEl = document.getElementById("reels-list");
 const refreshBtn = document.getElementById("refresh-btn");
+const connectIgBtn = document.getElementById("connect-ig-btn");
 const syncIgReelsBtn = document.getElementById("sync-ig-reels-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
@@ -110,6 +111,61 @@ function setSyncingIg(isSyncing) {
   if (!(syncIgReelsBtn instanceof HTMLButtonElement)) return;
   syncIgReelsBtn.disabled = isSyncing;
   syncIgReelsBtn.textContent = isSyncing ? "Syncing IG..." : "Sync IG Reels (20)";
+}
+
+function setConnectingIg(isConnecting) {
+  if (!(connectIgBtn instanceof HTMLButtonElement)) return;
+  connectIgBtn.disabled = isConnecting;
+  connectIgBtn.textContent = isConnecting ? "Connecting..." : "Connect IG";
+}
+
+async function getSessionAccessToken() {
+  const { data: sessionData, error: sessionError } = await withTimeout(
+    supabase.auth.getSession(),
+    REQUEST_TIMEOUT_MS,
+    "Session check timed out",
+  );
+  if (sessionError) throw sessionError;
+
+  const accessToken = String(sessionData?.session?.access_token || "").trim();
+  if (!accessToken) {
+    throw new Error("Session expired. Please log in again.");
+  }
+  return accessToken;
+}
+
+async function connectInstagramOAuth() {
+  if (!currentUser) {
+    window.location.href = "/index.html";
+    return;
+  }
+
+  setConnectingIg(true);
+  setStatus("Starting Instagram connect...");
+  try {
+    const accessToken = await getSessionAccessToken();
+    const response = await withTimeout(
+      fetch("/api/instagram/connect", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+      REQUEST_TIMEOUT_MS,
+      "Instagram connect timed out",
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.authUrl) {
+      throw new Error(String(payload?.error || `Connect failed (${response.status})`));
+    }
+    window.location.href = payload.authUrl;
+  } catch (error) {
+    console.error(error);
+    setStatus(`IG connect failed: ${error?.message || "unknown error"}`, true);
+    setConnectingIg(false);
+  }
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out") {
@@ -1274,17 +1330,7 @@ async function syncInstagramReelsLast20() {
   setSyncingIg(true);
   setStatus("Syncing latest 20 IG reels...");
   try {
-    const { data: sessionData, error: sessionError } = await withTimeout(
-      supabase.auth.getSession(),
-      REQUEST_TIMEOUT_MS,
-      "Session check timed out",
-    );
-    if (sessionError) throw sessionError;
-
-    const accessToken = String(sessionData?.session?.access_token || "").trim();
-    if (!accessToken) {
-      throw new Error("Session expired. Please log in again.");
-    }
+    const accessToken = await getSessionAccessToken();
 
     const response = await withTimeout(
       fetch("/api/instagram/sync-reels", {
@@ -1298,6 +1344,12 @@ async function syncInstagramReelsLast20() {
     );
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 404 && /instagram not connected/i.test(String(payload?.error || ""))) {
+        setStatus("Instagram is not connected. Opening connect flow...");
+        setSyncingIg(false);
+        await connectInstagramOAuth();
+        return;
+      }
       throw new Error(String(payload?.error || `Sync failed (${response.status})`));
     }
 
@@ -1442,6 +1494,12 @@ refreshBtn.addEventListener("click", async () => {
 if (syncIgReelsBtn instanceof HTMLButtonElement) {
   syncIgReelsBtn.addEventListener("click", async () => {
     await syncInstagramReelsLast20();
+  });
+}
+
+if (connectIgBtn instanceof HTMLButtonElement) {
+  connectIgBtn.addEventListener("click", async () => {
+    await connectInstagramOAuth();
   });
 }
 

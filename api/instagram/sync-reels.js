@@ -9,6 +9,22 @@ const {
 const { InstagramReconnectError } = require("../../lib/instagram");
 const { DEFAULT_SYNC_LIMIT, syncInstagramReelsForUserConnection } = require("../../lib/instagramReelsSync");
 
+async function fetchInstagramUserId(accessToken) {
+  const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
+  const url = new URL(`https://graph.facebook.com/${graphVersion}/me/accounts`);
+  url.searchParams.set("fields", "instagram_business_account{id}");
+  url.searchParams.set("limit", "50");
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url.toString(), { method: "GET" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.error) return "";
+
+  const pages = Array.isArray(payload?.data) ? payload.data : [];
+  const page = pages.find((entry) => entry?.instagram_business_account?.id);
+  return String(page?.instagram_business_account?.id || "").trim();
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST"]);
@@ -16,6 +32,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const user = await requireUser(req);
+    console.log("[sync-reels] User resolved", { userId: user.id });
 
     const connectionRows = await supabaseRest("instagram_connections", {
       query: {
@@ -25,16 +42,37 @@ module.exports = async function handler(req, res) {
       },
     });
     const connection = Array.isArray(connectionRows) ? connectionRows[0] : null;
-    if (!connection?.access_token || !connection?.instagram_user_id) {
+    if (!connection?.access_token) {
       return json(res, 404, { error: "Instagram not connected" });
+    }
+    console.log("[sync-reels] Instagram token found", {
+      hasAccessToken: Boolean(connection?.access_token),
+      hasInstagramUserId: Boolean(connection?.instagram_user_id),
+    });
+
+    let instagramUserId = String(connection.instagram_user_id || "").trim();
+    if (!instagramUserId) {
+      instagramUserId = await fetchInstagramUserId(connection.access_token);
+      if (instagramUserId) {
+        await supabaseRest("instagram_connections", {
+          method: "PATCH",
+          query: { user_id: `eq.${user.id}` },
+          body: { instagram_user_id: instagramUserId, updated_at: new Date().toISOString() },
+          prefer: "return=minimal",
+        });
+      }
+    }
+    if (!instagramUserId) {
+      return json(res, 401, { error: "Reconnect Instagram" });
     }
 
     const result = await syncInstagramReelsForUserConnection({
       userId: user.id,
       accessToken: connection.access_token,
-      instagramUserId: connection.instagram_user_id,
+      instagramUserId,
       limit: DEFAULT_SYNC_LIMIT,
     });
+    console.log("[sync-reels] Fetched/merged reels", result);
 
     return json(res, 200, result);
   } catch (error) {

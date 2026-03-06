@@ -1369,7 +1369,7 @@ async function syncInstagramReelsLast20() {
   setSyncingIg(true);
   setStatus("Syncing latest 20 IG reels...");
   try {
-    console.log("[IG Sync] preparing authenticated request to /api/instagram/sync-reels");
+    console.log("Calling /api/instagram/sync-reels");
     const response = await fetchAuthenticatedApi(
       "/api/instagram/sync-reels",
       {
@@ -1382,7 +1382,7 @@ async function syncInstagramReelsLast20() {
       "Instagram sync timed out",
     );
     const payload = await response.json().catch(() => ({}));
-    console.log("[IG Sync] response:", { status: response.status, ok: response.ok, payload });
+    console.log("Sync response:", { status: response.status, ok: response.ok, payload });
     if (!response.ok) {
       if (/reconnect instagram/i.test(String(payload?.error || ""))) {
         setStatus("Instagram token is invalid or expired. Opening connect flow...");
@@ -1418,7 +1418,7 @@ async function syncInstagramReelsLast20() {
     }
   } catch (error) {
     console.error(error);
-    console.log("[IG Sync] request failed:", error);
+    console.log("Sync response:", { error: error?.message || "unknown error" });
     setStatus(`IG sync failed: ${error?.message || "unknown error"}`, true);
   } finally {
     setSyncingIg(false);

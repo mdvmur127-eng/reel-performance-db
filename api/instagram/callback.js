@@ -78,7 +78,11 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const instagramClientSecret = envValue("INSTAGRAM_CLIENT_SECRET", "INSTAGRAM_APP_SECRET");
+    const instagramClientSecret = envValue(
+      "INSTAGRAM_CLIENT_SECRET",
+      "INSTAGRAM_APP_SECRET",
+      "FACEBOOK_APP_SECRET",
+    );
     if (!instagramClientSecret) {
       throw new Error(
         "Missing required Instagram secret: INSTAGRAM_CLIENT_SECRET (or INSTAGRAM_APP_SECRET).",
@@ -137,10 +141,16 @@ module.exports = async function handler(req, res) {
     if (!redirectUri) {
       throw new Error("Cannot determine OAuth redirect URI. Set INSTAGRAM_REDIRECT_URI in Vercel.");
     }
-    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID");
+    const instagramClientId = envValue(
+      "INSTAGRAM_CLIENT_ID",
+      "INSTAGRAM_APP_ID",
+      "FACEBOOK_APP_ID",
+      "NEXT_PUBLIC_INSTAGRAM_CLIENT_ID",
+      "NEXT_PUBLIC_FACEBOOK_APP_ID",
+    );
     if (!instagramClientId) {
       throw new Error(
-        "Missing Instagram App ID for token exchange. Set INSTAGRAM_CLIENT_ID in Vercel.",
+        "Missing Instagram App ID for token exchange. Set INSTAGRAM_CLIENT_ID in Vercel and redeploy.",
       );
     }
     const tokenResult = await exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret });

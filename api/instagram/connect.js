@@ -14,10 +14,19 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID");
+    const instagramClientId = envValue(
+      "INSTAGRAM_CLIENT_ID",
+      "INSTAGRAM_APP_ID",
+      "FACEBOOK_APP_ID",
+      "NEXT_PUBLIC_INSTAGRAM_CLIENT_ID",
+      "NEXT_PUBLIC_FACEBOOK_APP_ID",
+    );
     if (!instagramClientId) {
+      const deployHint = process.env.VERCEL_ENV
+        ? ` Current deploy env: ${process.env.VERCEL_ENV}.`
+        : "";
       throw new Error(
-        "Missing App ID. Set INSTAGRAM_CLIENT_ID in Vercel before connecting Instagram.",
+        `Missing App ID. Set INSTAGRAM_CLIENT_ID in Vercel and redeploy.${deployHint}`,
       );
     }
     const user = await requireUser(req);

@@ -1,23 +1,13 @@
 "use strict";
 
 const {
-  getRequiredEnv,
-  requireAuthenticatedUser,
-  selectRows,
-} = require("../../lib/supabaseAdmin");
+  json,
+  methodNotAllowed,
+  requireUser,
+  supabaseRest,
+} = require("../_lib/server");
 const { InstagramReconnectError } = require("../../lib/instagram");
 const { DEFAULT_SYNC_LIMIT, syncInstagramReelsForUserConnection } = require("../../lib/instagramReelsSync");
-
-function json(res, statusCode, payload) {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(payload));
-}
-
-function methodNotAllowed(res, methods) {
-  res.setHeader("Allow", methods.join(", "));
-  return json(res, 405, { error: `Method not allowed. Use: ${methods.join(", ")}` });
-}
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -25,13 +15,14 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    getRequiredEnv();
-    const user = await requireAuthenticatedUser(req);
+    const user = await requireUser(req);
 
-    const connectionRows = await selectRows("instagram_connections", {
-      select: "user_id,access_token,instagram_user_id,expires_at",
-      user_id: `eq.${user.id}`,
-      limit: 1,
+    const connectionRows = await supabaseRest("instagram_connections", {
+      query: {
+        select: "user_id,access_token,instagram_user_id,expires_at",
+        user_id: `eq.${user.id}`,
+        limit: 1,
+      },
     });
     const connection = Array.isArray(connectionRows) ? connectionRows[0] : null;
     if (!connection?.access_token || !connection?.instagram_user_id) {

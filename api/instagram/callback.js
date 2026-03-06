@@ -195,16 +195,21 @@ module.exports = async function handler(req, res) {
       prefer: "return=minimal",
     });
 
-    await syncInstagramReelsForUserConnection({
+    const syncResult = await syncInstagramReelsForUserConnection({
       userId: stateRow.user_id,
       accessToken: tokenResult.accessToken,
       instagramUserId: instagramUserId,
       limit: DEFAULT_SYNC_LIMIT,
     });
 
+    const syncMessage =
+      Number(syncResult?.synced || 0) > 0
+        ? `Instagram connected. Synced ${syncResult.synced} reels (${syncResult.new} new, ${syncResult.updated} updated).`
+        : "Instagram connected. No reel posts were returned for this account (last 20 media checked).";
+
     return redirectToApp(res, {
       ig_oauth: "success",
-      ig_message: "Instagram connected and latest 20 reels synced.",
+      ig_message: syncMessage,
     });
   } catch (error) {
     return redirectToApp(res, {

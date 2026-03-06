@@ -1368,7 +1368,16 @@ async function syncInstagramReelsLast20() {
     }
 
     await refreshList();
-    setStatus(`IG sync complete: ${metricDisplay(payload.synced)} synced (${metricDisplay(payload.new)} new, ${metricDisplay(payload.updated)} updated).`);
+    const synced = Number(payload?.synced || 0);
+    if (synced === 0) {
+      setStatus(
+        "IG sync complete: 0 reels found. Make sure this is an Instagram Business/Creator account with reel posts.",
+      );
+    } else {
+      setStatus(
+        `IG sync complete: ${metricDisplay(payload.synced)} synced (${metricDisplay(payload.new)} new, ${metricDisplay(payload.updated)} updated).`,
+      );
+    }
   } catch (error) {
     console.error(error);
     setStatus(`IG sync failed: ${error?.message || "unknown error"}`, true);

@@ -85,24 +85,6 @@ h2 {
   flex-wrap: wrap;
 }
 
-.compact-input {
-  min-height: 36px;
-  min-width: 210px;
-  max-width: 240px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--white);
-  color: var(--navy);
-  font: inherit;
-}
-
-.compact-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(245, 166, 34, 0.25);
-}
-
 .section-head-inline {
   margin-bottom: 10px;
 }

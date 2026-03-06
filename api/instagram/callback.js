@@ -2,21 +2,11 @@ const {
   envValue,
   getOrigin,
   getQueryParam,
-  json,
   methodNotAllowed,
   redirectToApp,
   supabaseRest,
 } = require("../_lib/server");
-
-function appIdFromState(state) {
-  const parts = String(state || "").split(".");
-  if (parts.length < 2) return "";
-  try {
-    return Buffer.from(parts[parts.length - 1], "base64url").toString("utf8").trim();
-  } catch {
-    return "";
-  }
-}
+const { DEFAULT_SYNC_LIMIT, syncInstagramReelsForUserConnection } = require("../../lib/instagramReelsSync");
 
 async function exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret }) {
   const graphVersion = process.env.FACEBOOK_GRAPH_VERSION || "v22.0";
@@ -147,24 +137,20 @@ module.exports = async function handler(req, res) {
     if (!redirectUri) {
       throw new Error("Cannot determine OAuth redirect URI. Set INSTAGRAM_REDIRECT_URI in Vercel.");
     }
-    const instagramClientId =
-      envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID") || appIdFromState(stateRow.state || state);
+    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID");
     if (!instagramClientId) {
       throw new Error(
-        "Missing Instagram App ID for token exchange. Set INSTAGRAM_CLIENT_ID in Vercel or reconnect using App ID override.",
+        "Missing Instagram App ID for token exchange. Set INSTAGRAM_CLIENT_ID in Vercel.",
       );
     }
     const tokenResult = await exchangeCodeForToken({ code, redirectUri, instagramClientId, instagramClientSecret });
-    const instagramUserId = await fetchInstagramUserId(tokenResult.accessToken);
-    if (!instagramUserId) {
-      throw new Error("Could not resolve Instagram user id from token. Reconnect Instagram and approve all requested permissions.");
-    }
 
     const expiresAt =
       tokenResult.expiresIn && tokenResult.expiresIn > 0
         ? new Date(Date.now() + tokenResult.expiresIn * 1000).toISOString()
         : null;
 
+    // Store token first, then resolve IG account id and update the same row.
     await supabaseRest("instagram_connections", {
       method: "POST",
       query: { on_conflict: "user_id" },
@@ -172,7 +158,7 @@ module.exports = async function handler(req, res) {
         {
           user_id: stateRow.user_id,
           access_token: tokenResult.accessToken,
-          instagram_user_id: instagramUserId,
+          instagram_user_id: null,
           token_type: tokenResult.tokenType,
           expires_at: expiresAt,
           updated_at: new Date().toISOString(),
@@ -181,15 +167,34 @@ module.exports = async function handler(req, res) {
       prefer: "resolution=merge-duplicates,return=minimal",
     });
 
+    const instagramUserId = await fetchInstagramUserId(tokenResult.accessToken);
+    if (!instagramUserId) {
+      throw new Error("Could not resolve Instagram user id from token. Reconnect Instagram and approve all requested permissions.");
+    }
+
+    await supabaseRest("instagram_connections", {
+      method: "PATCH",
+      query: { user_id: `eq.${stateRow.user_id}` },
+      body: { instagram_user_id: instagramUserId, updated_at: new Date().toISOString() },
+      prefer: "return=minimal",
+    });
+
     await supabaseRest("instagram_oauth_states", {
       method: "DELETE",
       query: { state: `eq.${state}` },
       prefer: "return=minimal",
     });
 
+    await syncInstagramReelsForUserConnection({
+      userId: stateRow.user_id,
+      accessToken: tokenResult.accessToken,
+      instagramUserId: instagramUserId,
+      limit: DEFAULT_SYNC_LIMIT,
+    });
+
     return redirectToApp(res, {
       ig_oauth: "success",
-      ig_message: "Instagram connected successfully.",
+      ig_message: "Instagram connected and latest 20 reels synced.",
     });
   } catch (error) {
     return redirectToApp(res, {

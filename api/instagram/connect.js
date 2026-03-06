@@ -4,7 +4,6 @@ const {
   json,
   methodNotAllowed,
   randomState,
-  readJsonBody,
   requireUser,
   supabaseRest,
 } = require("../_lib/server");
@@ -15,12 +14,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const body = await readJsonBody(req).catch(() => ({}));
-    const appIdOverride = String(body?.appId || body?.instagramClientId || "").trim();
-    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID") || appIdOverride;
+    const instagramClientId = envValue("INSTAGRAM_CLIENT_ID", "INSTAGRAM_APP_ID", "FACEBOOK_APP_ID");
     if (!instagramClientId) {
       throw new Error(
-        "Missing App ID. Set INSTAGRAM_CLIENT_ID in Vercel or paste Meta App ID in the app field before connecting.",
+        "Missing App ID. Set INSTAGRAM_CLIENT_ID in Vercel before connecting Instagram.",
       );
     }
     const user = await requireUser(req);
@@ -29,7 +26,7 @@ module.exports = async function handler(req, res) {
       process.env.INSTAGRAM_OAUTH_SCOPES ||
       "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement";
 
-    const state = `${randomState(20)}.${Buffer.from(instagramClientId, "utf8").toString("base64url")}`;
+    const state = randomState(20);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     await supabaseRest("instagram_oauth_states", {

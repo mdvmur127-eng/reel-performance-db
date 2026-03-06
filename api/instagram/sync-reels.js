@@ -50,28 +50,56 @@ module.exports = async function handler(req, res) {
       hasInstagramUserId: Boolean(connection?.instagram_user_id),
     });
 
+    const persistInstagramUserId = async (nextInstagramUserId) => {
+      if (!nextInstagramUserId) return;
+      await supabaseRest("instagram_connections", {
+        method: "PATCH",
+        query: { user_id: `eq.${user.id}` },
+        body: { instagram_user_id: nextInstagramUserId, updated_at: new Date().toISOString() },
+        prefer: "return=minimal",
+      });
+    };
+
     let instagramUserId = String(connection.instagram_user_id || "").trim();
     if (!instagramUserId) {
       instagramUserId = await fetchInstagramUserId(connection.access_token);
       if (instagramUserId) {
-        await supabaseRest("instagram_connections", {
-          method: "PATCH",
-          query: { user_id: `eq.${user.id}` },
-          body: { instagram_user_id: instagramUserId, updated_at: new Date().toISOString() },
-          prefer: "return=minimal",
-        });
+        await persistInstagramUserId(instagramUserId);
       }
     }
     if (!instagramUserId) {
       return json(res, 401, { error: "Reconnect Instagram" });
     }
 
-    const result = await syncInstagramReelsForUserConnection({
-      userId: user.id,
-      accessToken: connection.access_token,
-      instagramUserId,
-      limit: DEFAULT_SYNC_LIMIT,
-    });
+    let result;
+    try {
+      result = await syncInstagramReelsForUserConnection({
+        userId: user.id,
+        accessToken: connection.access_token,
+        instagramUserId,
+        limit: DEFAULT_SYNC_LIMIT,
+      });
+    } catch (error) {
+      if (!(error instanceof InstagramReconnectError)) throw error;
+
+      // Retry once with a freshly resolved IG user id to handle stale id mismatches.
+      const refreshedInstagramUserId = await fetchInstagramUserId(connection.access_token);
+      if (!refreshedInstagramUserId) {
+        return json(res, 401, { error: "Reconnect Instagram" });
+      }
+      if (refreshedInstagramUserId !== instagramUserId) {
+        instagramUserId = refreshedInstagramUserId;
+        await persistInstagramUserId(instagramUserId);
+      }
+
+      result = await syncInstagramReelsForUserConnection({
+        userId: user.id,
+        accessToken: connection.access_token,
+        instagramUserId,
+        limit: DEFAULT_SYNC_LIMIT,
+      });
+    }
+
     console.log("[sync-reels] Fetched/merged reels", result);
 
     return json(res, 200, result);

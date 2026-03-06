@@ -1364,6 +1364,12 @@ async function syncInstagramReelsLast20() {
         await connectInstagramOAuth();
         return;
       }
+      if (response.status === 401 && /reconnect instagram/i.test(String(payload?.error || ""))) {
+        setStatus("Instagram token expired. Opening connect flow...");
+        setSyncingIg(false);
+        await connectInstagramOAuth();
+        return;
+      }
       throw new Error(String(payload?.error || `Sync failed (${response.status})`));
     }
 

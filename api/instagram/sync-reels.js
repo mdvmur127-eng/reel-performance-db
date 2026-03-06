@@ -38,11 +38,6 @@ module.exports = async function handler(req, res) {
       return json(res, 404, { error: "Instagram not connected" });
     }
 
-    const expiresMs = Date.parse(String(connection.expires_at || ""));
-    if (Number.isFinite(expiresMs) && expiresMs <= Date.now()) {
-      return json(res, 401, { error: "Reconnect Instagram" });
-    }
-
     const result = await syncInstagramReelsForUserConnection({
       userId: user.id,
       accessToken: connection.access_token,

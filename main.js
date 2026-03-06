@@ -148,6 +148,33 @@ async function getSessionAccessToken() {
   return accessToken;
 }
 
+async function fetchAuthenticatedApi(path, options = {}, timeoutMs = REQUEST_TIMEOUT_MS, timeoutMessage = "Request timed out") {
+  const token = await getSessionAccessToken();
+  if (!token) {
+    throw new Error("You are not logged in. Please log in again and retry.");
+  }
+
+  const headers = {
+    ...(options?.headers || {}),
+    Authorization: `Bearer ${token}`,
+  };
+
+  const hasBody = options?.body !== undefined && options?.body !== null;
+  const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === "content-type");
+  if (hasBody && !hasContentType) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return withTimeout(
+    fetch(path, {
+      ...options,
+      headers,
+    }),
+    timeoutMs,
+    timeoutMessage,
+  );
+}
+
 async function connectInstagramOAuth() {
   if (!currentUser) {
     window.location.href = "/index.html";
@@ -157,16 +184,13 @@ async function connectInstagramOAuth() {
   setConnectingIg(true);
   setStatus("Starting Instagram connect...");
   try {
-    const accessToken = await getSessionAccessToken();
-    const response = await withTimeout(
-      fetch("/api/instagram/connect", {
+    const response = await fetchAuthenticatedApi(
+      "/api/instagram/connect",
+      {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }),
+      },
       REQUEST_TIMEOUT_MS,
       "Instagram connect timed out",
     );
@@ -1344,15 +1368,14 @@ async function syncInstagramReelsLast20() {
   setSyncingIg(true);
   setStatus("Syncing latest 20 IG reels...");
   try {
-    const accessToken = await getSessionAccessToken();
-
-    const response = await withTimeout(
-      fetch("/api/instagram/sync-reels", {
+    const response = await fetchAuthenticatedApi(
+      "/api/instagram/sync-reels",
+      {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
-      }),
+      },
       IG_SYNC_TIMEOUT_MS,
       "Instagram sync timed out",
     );

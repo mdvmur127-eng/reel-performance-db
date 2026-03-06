@@ -36,6 +36,13 @@ module.exports = async function handler(req, res) {
   const redirectUri = redirectUriSource.value;
   const supabaseUrl = supabaseUrlSource.value;
   const supabaseServiceRole = supabaseServiceRoleSource.value;
+  const requestHost = String(req.headers?.host || "");
+  let redirectHost = "";
+  try {
+    redirectHost = redirectUri ? new URL(redirectUri).host : "";
+  } catch {
+    redirectHost = "";
+  }
 
   return json(res, 200, {
     ok: Boolean(appId && appSecret && redirectUri && supabaseUrl && supabaseServiceRole),
@@ -52,6 +59,10 @@ module.exports = async function handler(req, res) {
     instagramClientIdSource: appIdSource.key,
     instagramClientSecretSource: appSecretSource.key,
     instagramRedirectUriSource: redirectUriSource.key,
+    instagramRedirectUriValue: redirectUri || "",
+    instagramRedirectUriHost: redirectHost,
+    requestHost,
+    isRedirectHostMatchingRequestHost: Boolean(redirectHost && requestHost && redirectHost === requestHost),
     supabaseUrlSource: supabaseUrlSource.key,
     supabaseServiceRoleSource: supabaseServiceRoleSource.key,
     deploymentHost: req.headers?.host || "",

@@ -16,7 +16,7 @@ const formStatusEl = document.getElementById("form-status");
 const listEl = document.getElementById("reels-list");
 const refreshBtn = document.getElementById("refresh-btn");
 const connectIgBtn = document.getElementById("connect-ig-btn");
-const syncIgReelsBtn = document.getElementById("sync-ig-reels-btn");
+const syncIgReelsBtn = document.getElementById("syncIgBtn") || document.getElementById("sync-ig-reels-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const basicFieldsEl = document.getElementById("fields-basic");
@@ -1360,6 +1360,7 @@ async function refreshList() {
 }
 
 async function syncInstagramReelsLast20() {
+  console.log("Sync IG clicked");
   if (!currentUser) {
     window.location.href = "/index.html";
     return;
@@ -1368,6 +1369,7 @@ async function syncInstagramReelsLast20() {
   setSyncingIg(true);
   setStatus("Syncing latest 20 IG reels...");
   try {
+    console.log("[IG Sync] preparing authenticated request to /api/instagram/sync-reels");
     const response = await fetchAuthenticatedApi(
       "/api/instagram/sync-reels",
       {
@@ -1380,6 +1382,7 @@ async function syncInstagramReelsLast20() {
       "Instagram sync timed out",
     );
     const payload = await response.json().catch(() => ({}));
+    console.log("[IG Sync] response:", { status: response.status, ok: response.ok, payload });
     if (!response.ok) {
       if (/reconnect instagram/i.test(String(payload?.error || ""))) {
         setStatus("Instagram token is invalid or expired. Opening connect flow...");
@@ -1415,10 +1418,15 @@ async function syncInstagramReelsLast20() {
     }
   } catch (error) {
     console.error(error);
+    console.log("[IG Sync] request failed:", error);
     setStatus(`IG sync failed: ${error?.message || "unknown error"}`, true);
   } finally {
     setSyncingIg(false);
   }
+}
+
+async function syncInstagramReels() {
+  return syncInstagramReelsLast20();
 }
 
 function parseMissingColumn(errorMessage) {
@@ -1551,7 +1559,7 @@ refreshBtn.addEventListener("click", async () => {
 
 if (syncIgReelsBtn instanceof HTMLButtonElement) {
   syncIgReelsBtn.addEventListener("click", async () => {
-    await syncInstagramReelsLast20();
+    await syncInstagramReels();
   });
 }
 

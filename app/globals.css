@@ -178,6 +178,20 @@ button:disabled {
   background: #111827;
 }
 
+.secondary-btn.subtle-btn {
+  background: #475569;
+}
+
+.secondary-btn.subtle-btn:hover {
+  background: #334155;
+}
+
+.table-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
 .ig-pill {
   font-size: 13px;
   border: 1px solid var(--line);
@@ -191,6 +205,12 @@ button:disabled {
 .ig-message {
   margin-top: -6px;
   margin-bottom: 12px;
+}
+
+.edit-mode-note {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: var(--brand-dark);
 }
 
 .feedback {

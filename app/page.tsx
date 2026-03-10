@@ -118,6 +118,7 @@ const createInitialForm = () => {
 export default function Home() {
   const [form, setForm] = useState<FormState>(createInitialForm);
   const [rows, setRows] = useState<Metric[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Loading...");
   const [igStatus, setIgStatus] = useState<InstagramStatus | null>(null);
@@ -184,13 +185,16 @@ export default function Home() {
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    const activeEditId = editingId;
+    const isEditing = activeEditId !== null;
+
     setLoading(true);
-    setMessage("Saving...");
+    setMessage(isEditing ? "Updating..." : "Saving...");
 
     const res = await fetch("/api/metrics", {
-      method: "POST",
+      method: isEditing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
+      body: JSON.stringify(isEditing ? { ...form, id: activeEditId } : form)
     });
 
     const json = await res.json();
@@ -201,12 +205,47 @@ export default function Home() {
       return;
     }
 
+    setLoading(false);
+
+    if (isEditing && activeEditId) {
+      setRows((current) =>
+        current.map((row) => (row.id === activeEditId ? json.data : row))
+      );
+      setEditingId(null);
+      setMessage("Updated metric entry");
+      return;
+    }
+
     const nextForm = createInitialForm();
     nextForm.date = form.date;
     setForm(nextForm);
     setRows((current) => [json.data, ...current]);
-    setLoading(false);
     setMessage("Saved metric entry");
+  };
+
+  const metricToForm = (metric: MetricSource): FormState => {
+    const next = createInitialForm();
+    for (const field of fields) {
+      const value = metric[field.key];
+      next[field.key] = value === null || value === undefined ? "" : String(value);
+    }
+    if (!next.date) {
+      next.date = today;
+    }
+    return next;
+  };
+
+  const startEditingRow = (row: Metric) => {
+    setForm(metricToForm(row));
+    setEditingId(row.id);
+    setMessage(`Editing "${row.title}"`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setForm(createInitialForm());
+    setMessage("Edit canceled");
   };
 
   const syncInstagramReels = async () => {
@@ -578,6 +617,11 @@ export default function Home() {
       <section className="card">
         <form onSubmit={onSubmit}>
           <h2 className="section-title">Core Metrics</h2>
+          {editingId ? (
+            <p className="subtitle edit-mode-note">
+              Editing existing entry. Update fields and click <strong>Update Entry</strong>.
+            </p>
+          ) : null}
           {renderFields(primaryFields)}
 
           <h2 className="section-title">Audience + Performance</h2>
@@ -590,8 +634,19 @@ export default function Home() {
 
           <div className="actions">
             <button disabled={loading} type="submit">
-              {loading ? "Saving..." : "Save Metrics"}
+              {loading
+                ? editingId
+                  ? "Updating..."
+                  : "Saving..."
+                : editingId
+                  ? "Update Entry"
+                  : "Save Metrics"}
             </button>
+            {editingId ? (
+              <button className="secondary-btn subtle-btn" disabled={loading} type="button" onClick={cancelEditing}>
+                Cancel Edit
+              </button>
+            ) : null}
             <span className="feedback">{message}</span>
           </div>
         </form>
@@ -614,6 +669,7 @@ export default function Home() {
                 <th>Saves</th>
                 <th>Shares</th>
                 <th>Follows</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -641,6 +697,15 @@ export default function Home() {
                   <td>{row.saves?.toLocaleString() ?? "-"}</td>
                   <td>{row.shares?.toLocaleString() ?? "-"}</td>
                   <td>{row.follows?.toLocaleString() ?? "-"}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="secondary-btn table-btn"
+                      onClick={() => startEditingRow(row)}
+                    >
+                      {editingId === row.id ? "Editing" : "Edit"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

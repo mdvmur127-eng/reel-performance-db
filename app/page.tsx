@@ -176,7 +176,7 @@ export default function Home() {
     setConnectedIgUserId(json.account?.ig_user_id ?? null);
   };
 
-  const loadPendingAccounts = async () => {
+  const loadPendingAccounts = async (): Promise<boolean> => {
     const res = await fetch("/api/meta/pending");
     const json = (await res.json()) as {
       pending: boolean;
@@ -186,7 +186,7 @@ export default function Home() {
 
     if (!res.ok) {
       setIgMessage(json.error ?? "Failed to load Instagram account options");
-      return;
+      return false;
     }
 
     if (json.pending && (json.accounts?.length ?? 0) > 0) {
@@ -195,11 +195,12 @@ export default function Home() {
       setPendingAccounts(json.accounts);
       setShowAccountPicker(true);
       setIgMessage("Select the Instagram account you want to connect");
-      return;
+      return true;
     }
 
     setPendingAccounts([]);
     setShowAccountPicker(false);
+    return false;
   };
 
   const loadSwitchAccounts = async () => {
@@ -232,7 +233,7 @@ export default function Home() {
     loadInstagramStatus().catch(() =>
       setIgMessage("Failed to load Instagram connection status")
     );
-    loadPendingAccounts().catch(() => undefined);
+    loadPendingAccounts().catch(() => false);
 
     const query = new URLSearchParams(window.location.search);
     const igState = query.get("ig");
@@ -247,9 +248,13 @@ export default function Home() {
     }
 
     if (igState === "choose") {
-      loadPendingAccounts().catch(() =>
-        setIgMessage("Failed to load Instagram account options")
-      );
+      loadPendingAccounts()
+        .then((hasOptions) => {
+          if (!hasOptions) {
+            setIgMessage("Meta returned no selectable Instagram accounts in this session");
+          }
+        })
+        .catch(() => setIgMessage("Failed to load Instagram account options"));
     }
 
     if (igState || igStateMessage) {
@@ -436,6 +441,10 @@ export default function Home() {
 
   const switchInstagramAccount = async () => {
     setIgMessage("Loading connected Instagram accounts...");
+    const hasPendingAccounts = await loadPendingAccounts();
+    if (hasPendingAccounts) {
+      return;
+    }
     const opened = await loadSwitchAccounts();
     if (!opened) {
       setIgMessage("Could not load connected accounts. Reconnecting...");

@@ -428,6 +428,13 @@ export default function Home() {
   const formatNumber = (value: number | null) =>
     value === null ? "-" : value.toFixed(3);
 
+  const toExternalUrl = (value: string) => {
+    if (/^https?:\/\//i.test(value)) {
+      return value;
+    }
+    return `https://${value}`;
+  };
+
   const metricSource: MetricSource = latestRow ?? form;
 
   const derivedMetrics = metricSource
@@ -560,7 +567,20 @@ export default function Home() {
                 <tr key={row.id}>
                   <td>{row.date}</td>
                   <td>{row.title}</td>
-                  <td>{row.url ?? "-"}</td>
+                  <td className="url-cell">
+                    {row.url ? (
+                      <a
+                        className="url-link"
+                        href={toExternalUrl(row.url)}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        {row.url}
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td>{row.views?.toLocaleString() ?? "-"}</td>
                   <td>{row.likes?.toLocaleString() ?? "-"}</td>
                   <td>{row.comments?.toLocaleString() ?? "-"}</td>

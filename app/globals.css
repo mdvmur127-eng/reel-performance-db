@@ -238,6 +238,20 @@ th {
   font-weight: 700;
 }
 
+.url-cell {
+  max-width: 380px;
+}
+
+.url-link {
+  color: var(--brand-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.url-link:hover {
+  color: var(--brand);
+}
+
 @media (max-width: 1100px) {
   .grid,
   .grid-tight {

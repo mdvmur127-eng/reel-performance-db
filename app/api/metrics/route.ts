@@ -5,9 +5,6 @@ type MetricPayload = Record<string, string | number | undefined>;
 
 const textFields = [
   "url",
-  "views_over_time_all",
-  "views_over_time_followers",
-  "views_over_time_non_followers",
   "top_source_of_views",
   "audience_country",
   "audience_age"

@@ -9,7 +9,7 @@ A Next.js + Supabase app to manually enter and store Instagram Reels metrics.
 3. Run [`supabase/schema.sql`](./supabase/schema.sql).
 
 The schema now uses the field set:
-`Date, Title, URL, Views, Likes, Comments, Saves, Shares, Follows, Watch Time, Duration, Views (Followers), Views (Non-followers), Views over time (All), Views over time (Followers), Views over time (Non-followers), Top source of views, Accounts Reached, This reel's skip rate, Typical skip rate, Average watch time, Audience (Men), Audience (Women), Audience (Country), Audience (Age), sec_0 ... sec_90`.
+`Date, Title, URL, Views, Likes, Comments, Saves, Shares, Follows, Watch Time, Duration, Views (Followers), Views (Non-followers), Top source of views, Accounts Reached, This reel's skip rate, Typical skip rate, Average watch time, Audience (Men), Audience (Women), Audience (Country), Audience (Age), sec_0 ... sec_90`.
 
 ## 2) Set environment variables
 

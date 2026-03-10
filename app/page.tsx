@@ -55,27 +55,13 @@ const audienceFields: FieldConfig[] = [
   { key: "top_source_of_views", label: "Top source of views", type: "text" }
 ];
 
-const overTimeFields: FieldConfig[] = [
-  { key: "views_over_time_all", label: "Views over time (All)", type: "textarea" },
-  {
-    key: "views_over_time_followers",
-    label: "Views over time (Followers)",
-    type: "textarea"
-  },
-  {
-    key: "views_over_time_non_followers",
-    label: "Views over time (Non-followers)",
-    type: "textarea"
-  }
-];
-
 const secFields: FieldConfig[] = Array.from({ length: 91 }, (_, second) => ({
   key: `sec_${second}`,
   label: `sec_${second}`,
   type: "number"
 }));
 
-const fields = [...primaryFields, ...audienceFields, ...overTimeFields, ...secFields];
+const fields = [...primaryFields, ...audienceFields, ...secFields];
 
 const createInitialForm = () => {
   const initial: FormState = {};
@@ -179,9 +165,6 @@ export default function Home() {
 
           <h2 className="section-title">Audience + Performance</h2>
           {renderFields(audienceFields)}
-
-          <h2 className="section-title">Views Over Time</h2>
-          {renderFields(overTimeFields, "grid grid-wide")}
 
           <details className="expander">
             <summary>Second-by-second Retention (sec_0 to sec_90)</summary>

@@ -1,4 +1,7 @@
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+
 const GRAPH_VERSION = "v21.0";
+const OAUTH_STATE_TTL_SECONDS = 10 * 60;
 
 const META_SCOPES = [
   "instagram_basic",
@@ -94,6 +97,49 @@ export const buildInstagramAuthUrl = (state: string) => {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", META_SCOPES.join(","));
   return url.toString();
+};
+
+export const createInstagramOAuthState = () => {
+  const { appSecret } = getMetaConfig();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = randomUUID();
+  const payload = `${timestamp}.${nonce}`;
+  const signature = createHmac("sha256", appSecret).update(payload).digest("hex");
+  return `${payload}.${signature}`;
+};
+
+export const verifyInstagramOAuthState = (state: string) => {
+  const { appSecret } = getMetaConfig();
+  const parts = state.split(".");
+
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  const [timestampRaw, nonce, signature] = parts;
+  const timestamp = Number(timestampRaw);
+
+  if (!Number.isFinite(timestamp) || !nonce || !signature) {
+    return false;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const age = now - timestamp;
+
+  if (age < -60 || age > OAUTH_STATE_TTL_SECONDS) {
+    return false;
+  }
+
+  const payload = `${timestampRaw}.${nonce}`;
+  const expectedSignature = createHmac("sha256", appSecret).update(payload).digest("hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+  const receivedBuffer = Buffer.from(signature, "hex");
+
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedBuffer, receivedBuffer);
 };
 
 export const exchangeCodeForShortLivedToken = async (code: string) => {

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
-  getInstagramAccount
+  getInstagramAccount,
+  verifyInstagramOAuthState
 } from "@/lib/meta";
 import { supabaseAdmin } from "@/lib/supabase";
 
@@ -14,9 +15,7 @@ const buildRedirect = (requestUrl: string, status: string, message?: string) => 
     destination.searchParams.set("ig_message", message.slice(0, 180));
   }
 
-  const response = NextResponse.redirect(destination);
-  response.cookies.delete("ig_oauth_state");
-  return response;
+  return NextResponse.redirect(destination);
 };
 
 export async function GET(request: NextRequest) {
@@ -24,13 +23,12 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorDescription = url.searchParams.get("error_description");
-  const storedState = request.cookies.get("ig_oauth_state")?.value;
 
   if (errorDescription) {
     return buildRedirect(request.url, "error", errorDescription);
   }
 
-  if (!code || !state || !storedState || state !== storedState) {
+  if (!code || !state || !verifyInstagramOAuthState(state)) {
     return buildRedirect(request.url, "error", "Instagram auth state validation failed");
   }
 

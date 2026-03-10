@@ -289,6 +289,74 @@ th {
   gap: 6px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.account-picker-modal {
+  width: min(760px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.28);
+}
+
+.account-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-picker-head h3 {
+  margin: 0;
+}
+
+.account-picker-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.account-picker-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfb;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-picker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-picker-info span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.account-picker-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @media (max-width: 1100px) {
   .grid,
   .grid-tight {
@@ -330,5 +398,10 @@ th {
   .actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .account-picker-item {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

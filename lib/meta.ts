@@ -2,7 +2,9 @@ import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 
 const GRAPH_VERSION = "v21.0";
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
+const PENDING_SELECTION_TTL_SECONDS = 15 * 60;
 const GRAPH_TIMEOUT_MS = 15_000;
+export const META_PENDING_SELECTION_COOKIE = "meta_ig_pending_selection";
 
 const META_SCOPES = [
   "instagram_basic",
@@ -26,6 +28,20 @@ type GraphError = {
 export type InstagramAccount = {
   igUserId: string;
   username: string | null;
+};
+
+export type InstagramAccountOption = {
+  igUserId: string;
+  username: string | null;
+  pageId: string;
+  pageName: string | null;
+};
+
+type PendingInstagramSelection = {
+  accessToken: string;
+  tokenExpiresAt: string | null;
+  createdAt: number;
+  accounts: InstagramAccountOption[];
 };
 
 export type InstagramMedia = {
@@ -201,8 +217,26 @@ export const exchangeForLongLivedToken = async (shortLivedToken: string) => {
 export const getInstagramAccount = async (
   accessToken: string
 ): Promise<InstagramAccount | null> => {
+  const accounts = await listInstagramAccounts(accessToken);
+  const first = accounts[0];
+
+  if (!first) {
+    return null;
+  }
+
+  return {
+    igUserId: first.igUserId,
+    username: first.username
+  };
+};
+
+export const listInstagramAccounts = async (
+  accessToken: string
+): Promise<InstagramAccountOption[]> => {
   const data = await graphGet<{
     data?: Array<{
+      id?: string;
+      name?: string;
       instagram_business_account?: { id?: string; username?: string };
       connected_instagram_account?: { id?: string; username?: string };
     }>;
@@ -214,18 +248,81 @@ export const getInstagramAccount = async (
   });
 
   const pages = data.data ?? [];
+  const result: InstagramAccountOption[] = [];
+  const dedupe = new Set<string>();
 
   for (const page of pages) {
     const account = page.instagram_business_account ?? page.connected_instagram_account;
-    if (account?.id) {
-      return {
+    if (account?.id && !dedupe.has(account.id)) {
+      dedupe.add(account.id);
+      result.push({
         igUserId: account.id,
-        username: account.username ?? null
-      };
+        username: account.username ?? null,
+        pageId: page.id ?? "",
+        pageName: page.name ?? null
+      });
     }
   }
 
-  return null;
+  return result;
+};
+
+export const createPendingInstagramSelectionToken = (
+  input: Omit<PendingInstagramSelection, "createdAt">
+) => {
+  const { appSecret } = getMetaConfig();
+  const payload = Buffer.from(
+    JSON.stringify({ ...input, createdAt: Math.floor(Date.now() / 1000) })
+  ).toString("base64url");
+  const signature = createHmac("sha256", appSecret).update(payload).digest("hex");
+  return `${payload}.${signature}`;
+};
+
+export const verifyPendingInstagramSelectionToken = (
+  token: string
+): PendingInstagramSelection | null => {
+  const { appSecret } = getMetaConfig();
+  const parts = token.split(".");
+
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [payload, signature] = parts;
+  const expectedSignature = createHmac("sha256", appSecret).update(payload).digest("hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+  const receivedBuffer = Buffer.from(signature, "hex");
+
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return null;
+  }
+
+  if (!timingSafeEqual(expectedBuffer, receivedBuffer)) {
+    return null;
+  }
+
+  let parsed: PendingInstagramSelection;
+
+  try {
+    parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (!parsed.createdAt || now - parsed.createdAt > PENDING_SELECTION_TTL_SECONDS) {
+    return null;
+  }
+
+  if (!Array.isArray(parsed.accounts) || parsed.accounts.length === 0) {
+    return null;
+  }
+
+  if (typeof parsed.accessToken !== "string" || !parsed.accessToken) {
+    return null;
+  }
+
+  return parsed;
 };
 
 export const fetchInstagramReels = async (

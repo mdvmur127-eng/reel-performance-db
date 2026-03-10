@@ -33,6 +33,13 @@ type InstagramStatus = {
   } | null;
 };
 
+type PendingInstagramAccount = {
+  igUserId: string;
+  username: string | null;
+  pageId: string;
+  pageName: string | null;
+};
+
 type FieldConfig = {
   key: string;
   label: string;
@@ -125,6 +132,9 @@ export default function Home() {
   const [igStatus, setIgStatus] = useState<InstagramStatus | null>(null);
   const [igSyncing, setIgSyncing] = useState(false);
   const [igMessage, setIgMessage] = useState("");
+  const [pendingAccounts, setPendingAccounts] = useState<PendingInstagramAccount[]>([]);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [pickingAccountId, setPickingAccountId] = useState<string | null>(null);
 
   const totalViews = useMemo(
     () => rows.reduce((sum, row) => sum + (row.views ?? 0), 0),
@@ -161,6 +171,30 @@ export default function Home() {
     setIgStatus(json);
   };
 
+  const loadPendingAccounts = async () => {
+    const res = await fetch("/api/meta/pending");
+    const json = (await res.json()) as {
+      pending: boolean;
+      accounts: PendingInstagramAccount[];
+      error?: string;
+    };
+
+    if (!res.ok) {
+      setIgMessage(json.error ?? "Failed to load Instagram account options");
+      return;
+    }
+
+    if (json.pending && (json.accounts?.length ?? 0) > 0) {
+      setPendingAccounts(json.accounts);
+      setShowAccountPicker(true);
+      setIgMessage("Select the Instagram account you want to connect");
+      return;
+    }
+
+    setPendingAccounts([]);
+    setShowAccountPicker(false);
+  };
+
   useEffect(() => {
     loadRows().catch(() => setMessage("Failed to load metrics"));
     loadInstagramStatus().catch(() =>
@@ -177,6 +211,12 @@ export default function Home() {
 
     if (igState === "error") {
       setIgMessage(igStateMessage ?? "Instagram connection failed");
+    }
+
+    if (igState === "choose") {
+      loadPendingAccounts().catch(() =>
+        setIgMessage("Failed to load Instagram account options")
+      );
     }
 
     if (igState || igStateMessage) {
@@ -375,6 +415,33 @@ export default function Home() {
     }
 
     window.location.href = "/api/meta/auth/start";
+  };
+
+  const closeAccountPicker = async () => {
+    setShowAccountPicker(false);
+    setPendingAccounts([]);
+    await fetch("/api/meta/pending", { method: "DELETE" }).catch(() => undefined);
+  };
+
+  const selectInstagramAccount = async (igUserId: string) => {
+    setPickingAccountId(igUserId);
+    const res = await fetch("/api/meta/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ igUserId })
+    });
+    const json = (await res.json()) as { error?: string };
+    setPickingAccountId(null);
+
+    if (!res.ok) {
+      setIgMessage(json.error ?? "Failed to connect selected Instagram account");
+      return;
+    }
+
+    setShowAccountPicker(false);
+    setPendingAccounts([]);
+    setIgMessage("Instagram account connected");
+    await loadInstagramStatus();
   };
 
   const parseMaybeNumber = (value: string) => {
@@ -634,6 +701,56 @@ export default function Home() {
         </div>
       </header>
       {igMessage ? <p className="subtitle ig-message">{igMessage}</p> : null}
+
+      {showAccountPicker ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="account-picker-modal">
+            <div className="account-picker-head">
+              <h3>Choose Instagram account</h3>
+              <button
+                className="secondary-btn table-btn subtle-btn"
+                type="button"
+                onClick={closeAccountPicker}
+              >
+                Close
+              </button>
+            </div>
+            <p className="subtitle">
+              Select which Instagram profile you want to connect to this app.
+            </p>
+            <div className="account-picker-list">
+              {pendingAccounts.map((account) => (
+                <div key={account.igUserId} className="account-picker-item">
+                  <div className="account-picker-info">
+                    <strong>@{account.username ?? account.igUserId}</strong>
+                    <span>
+                      Facebook Page: {account.pageName ?? (account.pageId || "Unknown")}
+                    </span>
+                  </div>
+                  <button
+                    className="secondary-btn table-btn"
+                    type="button"
+                    onClick={() => selectInstagramAccount(account.igUserId)}
+                    disabled={pickingAccountId !== null}
+                  >
+                    {pickingAccountId === account.igUserId ? "Connecting..." : "Select"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="account-picker-actions">
+              <button
+                className="secondary-btn subtle-btn table-btn"
+                type="button"
+                onClick={() => loadPendingAccounts()}
+                disabled={pickingAccountId !== null}
+              >
+                Refresh list
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <section className="card">
         <form onSubmit={onSubmit}>

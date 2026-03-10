@@ -255,6 +255,52 @@ export default function Home() {
     setIgSyncing(false);
   };
 
+  const quickSyncInstagramReels = async () => {
+    setIgSyncing(true);
+    setIgMessage("Quick syncing reels...");
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+
+    let res: Response;
+
+    try {
+      res = await fetch("/api/meta/sync?quick=1", {
+        method: "POST",
+        signal: controller.signal
+      });
+    } catch {
+      clearTimeout(timeout);
+      setIgSyncing(false);
+      setIgMessage("Sync timed out. Try again (or reconnect IG).");
+      return;
+    }
+
+    clearTimeout(timeout);
+    const json = (await res.json()) as {
+      imported?: number;
+      scanned?: number;
+      message?: string;
+      error?: string;
+    };
+
+    if (!res.ok) {
+      setIgSyncing(false);
+      setIgMessage(json.error ?? "Failed to sync reels");
+      return;
+    }
+
+    const imported = json.imported ?? 0;
+    const scanned = json.scanned ?? imported;
+    setIgMessage(
+      imported > 0
+        ? json.message ?? `Quick synced ${imported} reels (scanned ${scanned})`
+        : json.message ?? `No reels imported (scanned ${scanned})`
+    );
+    await Promise.all([loadRows(), loadInstagramStatus()]);
+    setIgSyncing(false);
+  };
+
   const switchInstagramAccount = async () => {
     setIgMessage("Switching account...");
 
@@ -498,10 +544,18 @@ export default function Home() {
               <button
                 className="secondary-btn"
                 type="button"
+                onClick={quickSyncInstagramReels}
+                disabled={igSyncing}
+              >
+                {igSyncing ? "Syncing IG..." : "Quick Sync"}
+              </button>
+              <button
+                className="secondary-btn"
+                type="button"
                 onClick={syncInstagramReels}
                 disabled={igSyncing}
               >
-                {igSyncing ? "Syncing IG..." : "Sync IG Reels"}
+                {igSyncing ? "Syncing IG..." : "Full Sync"}
               </button>
               <button
                 className="secondary-btn"

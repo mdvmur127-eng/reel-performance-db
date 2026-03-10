@@ -22,6 +22,7 @@ The schema now uses the field set:
    - `META_REDIRECT_URI`: callback URL, e.g. `https://your-domain.com/api/meta/auth/callback`.
    - `META_SYNC_LIMIT`: optional reels import limit per sync (default `25`).
    - `META_INSIGHT_CONCURRENCY`: optional parallel insight requests (default `5`).
+   - `META_FETCH_INSIGHTS`: set `true` to fetch insights during full sync (default `false` for faster imports).
 
 ## 3) Meta app setup (for Connect IG)
 

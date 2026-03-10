@@ -18,7 +18,10 @@ const toTitle = (caption: string | undefined, mediaId: string) => {
   return `Reel ${mediaId.slice(-8)}`;
 };
 
-export async function POST() {
+export async function POST(request: Request) {
+  const requestUrl = new URL(request.url);
+  const quickMode = requestUrl.searchParams.get("quick") === "1";
+
   const { data: connection, error: connectionError } = await supabaseAdmin
     .from("meta_instagram_connections")
     .select("ig_user_id, access_token")
@@ -37,11 +40,18 @@ export async function POST() {
   }
 
   const typedConnection = connection as MetaConnection;
-  const syncLimit = Math.max(5, Math.min(50, Number(process.env.META_SYNC_LIMIT ?? 25)));
+  const syncLimit = Math.max(
+    5,
+    Math.min(
+      50,
+      Number(process.env.META_SYNC_LIMIT ?? (quickMode ? 12 : 25))
+    )
+  );
   const insightConcurrency = Math.max(
     1,
     Math.min(8, Number(process.env.META_INSIGHT_CONCURRENCY ?? 5))
   );
+  const fetchInsights = process.env.META_FETCH_INSIGHTS === "true" && !quickMode;
 
   try {
     const reels = await fetchInstagramReels(
@@ -64,7 +74,9 @@ export async function POST() {
       const batch = reels.slice(i, i + insightConcurrency);
       const batchRows = await Promise.all(
         batch.map(async (reel) => {
-          const insights = await fetchReelInsights(typedConnection.access_token, reel.id);
+          const insights = fetchInsights
+            ? await fetchReelInsights(typedConnection.access_token, reel.id)
+            : { plays: null, reach: null, saved: null, shares: null };
 
           return {
             date: toDate(reel.timestamp),
@@ -95,7 +107,9 @@ export async function POST() {
     return NextResponse.json({
       imported: rows.length,
       scanned: reels.length,
-      message: `Synced ${rows.length} reels`
+      message: fetchInsights
+        ? `Synced ${rows.length} reels with insights`
+        : `Synced ${rows.length} reels (quick mode, insights skipped)`
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to sync reels";

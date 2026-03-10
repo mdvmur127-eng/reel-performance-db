@@ -219,7 +219,11 @@ export default function Home() {
     setConnectedIgUserId(json.connectedIgUserId ?? null);
     setPendingAccounts(json.accounts ?? []);
     setShowAccountPicker(true);
-    setIgMessage("Choose which connected Instagram account to use");
+    setIgMessage(
+      (json.accounts?.length ?? 0) > 0
+        ? "Choose which connected Instagram account to use"
+        : "No extra accounts visible in current token. Use Search another account."
+    );
     return true;
   };
 
@@ -228,6 +232,7 @@ export default function Home() {
     loadInstagramStatus().catch(() =>
       setIgMessage("Failed to load Instagram connection status")
     );
+    loadPendingAccounts().catch(() => undefined);
 
     const query = new URLSearchParams(window.location.search);
     const igState = query.get("ig");
@@ -430,8 +435,12 @@ export default function Home() {
   };
 
   const switchInstagramAccount = async () => {
-    setIgMessage("Opening account chooser...");
-    window.location.href = "/api/meta/auth/start?force=1";
+    setIgMessage("Loading connected Instagram accounts...");
+    const opened = await loadSwitchAccounts();
+    if (!opened) {
+      setIgMessage("Could not load connected accounts. Reconnecting...");
+      window.location.href = "/api/meta/auth/start?force=1";
+    }
   };
 
   const closeAccountPicker = async () => {
@@ -446,7 +455,8 @@ export default function Home() {
     setShowAccountPicker(false);
     setPendingAccounts([]);
     await fetch("/api/meta/pending", { method: "DELETE" }).catch(() => undefined);
-    window.location.href = "/api/meta/disconnect";
+    await fetch("/api/meta/disconnect", { method: "POST" }).catch(() => undefined);
+    window.location.href = "/api/meta/auth/start?force=1";
   };
 
   const selectInstagramAccount = async (igUserId: string) => {
@@ -757,27 +767,34 @@ export default function Home() {
                 : "Select which Instagram profile you want to connect to this app."}
             </p>
             <div className="account-picker-list">
-              {pendingAccounts.map((account) => (
-                <div key={account.igUserId} className="account-picker-item">
-                  <div className="account-picker-info">
-                    <strong>
-                      @{account.username ?? account.igUserId}
-                      {account.igUserId === connectedIgUserId ? " (Current)" : ""}
-                    </strong>
-                    <span>
-                      Facebook Page: {account.pageName ?? (account.pageId || "Unknown")}
-                    </span>
+              {pendingAccounts.length === 0 ? (
+                <p className="subtitle">
+                  No additional account options returned. Click{" "}
+                  <strong>Search another account</strong> to choose from Meta again.
+                </p>
+              ) : (
+                pendingAccounts.map((account) => (
+                  <div key={account.igUserId} className="account-picker-item">
+                    <div className="account-picker-info">
+                      <strong>
+                        @{account.username ?? account.igUserId}
+                        {account.igUserId === connectedIgUserId ? " (Current)" : ""}
+                      </strong>
+                      <span>
+                        Facebook Page: {account.pageName ?? (account.pageId || "Unknown")}
+                      </span>
+                    </div>
+                    <button
+                      className="secondary-btn table-btn"
+                      type="button"
+                      onClick={() => selectInstagramAccount(account.igUserId)}
+                      disabled={pickingAccountId !== null}
+                    >
+                      {pickingAccountId === account.igUserId ? "Connecting..." : "Select"}
+                    </button>
                   </div>
-                  <button
-                    className="secondary-btn table-btn"
-                    type="button"
-                    onClick={() => selectInstagramAccount(account.igUserId)}
-                    disabled={pickingAccountId !== null}
-                  >
-                    {pickingAccountId === account.igUserId ? "Connecting..." : "Select"}
-                  </button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
             <div className="account-picker-actions">
               {accountPickerMode === "switch" ? (

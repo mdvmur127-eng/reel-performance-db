@@ -4,7 +4,6 @@ const SUPABASE_URL = "https://lhmbqwasymbkqnnqnjxr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_b3GrtPN4T8dqorRlcAiuLQ_gnyyzhe9";
 const REELS_TABLE = "reels";
 const REQUEST_TIMEOUT_MS = 15000;
-const IG_SYNC_TIMEOUT_MS = 90000;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -15,8 +14,6 @@ const saveBtn = document.getElementById("save-btn");
 const formStatusEl = document.getElementById("form-status");
 const listEl = document.getElementById("reels-list");
 const refreshBtn = document.getElementById("refresh-btn");
-const connectIgBtn = document.getElementById("connect-ig-btn");
-const syncIgReelsBtn = document.getElementById("syncIgBtn") || document.getElementById("sync-ig-reels-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const userEmailEl = document.getElementById("user-email");
 const basicFieldsEl = document.getElementById("fields-basic");
@@ -105,105 +102,6 @@ function setStatus(message, isError = false) {
 function setSaving(isSaving) {
   saveBtn.disabled = isSaving;
   saveBtn.textContent = isSaving ? "Saving..." : editId ? "Update Reel" : "Save Reel";
-}
-
-function setSyncingIg(isSyncing) {
-  if (!(syncIgReelsBtn instanceof HTMLButtonElement)) return;
-  syncIgReelsBtn.disabled = isSyncing;
-  syncIgReelsBtn.textContent = isSyncing ? "Syncing IG..." : "Sync IG Reels (20)";
-}
-
-function setConnectingIg(isConnecting) {
-  if (!(connectIgBtn instanceof HTMLButtonElement)) return;
-  connectIgBtn.disabled = isConnecting;
-  connectIgBtn.textContent = isConnecting ? "Connecting..." : "Connect IG";
-}
-
-function applyInstagramOauthMessageFromQuery() {
-  const params = new URLSearchParams(window.location.search);
-  const igMessage = params.get("ig_message");
-  const igStatus = params.get("ig_oauth");
-  if (!igMessage) return;
-
-  setStatus(igMessage, igStatus === "error");
-  params.delete("ig_oauth");
-  params.delete("ig_message");
-  const query = params.toString();
-  const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
-  window.history.replaceState({}, "", nextUrl);
-}
-
-async function getSessionAccessToken() {
-  const { data: sessionData, error: sessionError } = await withTimeout(
-    supabase.auth.getSession(),
-    REQUEST_TIMEOUT_MS,
-    "Session check timed out",
-  );
-  if (sessionError) throw sessionError;
-
-  const accessToken = String(sessionData?.session?.access_token || "").trim();
-  if (!accessToken) {
-    throw new Error("Session expired. Please log in again.");
-  }
-  return accessToken;
-}
-
-async function fetchAuthenticatedApi(path, options = {}, timeoutMs = REQUEST_TIMEOUT_MS, timeoutMessage = "Request timed out") {
-  const token = await getSessionAccessToken();
-  if (!token) {
-    throw new Error("You are not logged in. Please log in again and retry.");
-  }
-
-  const headers = {
-    ...(options?.headers || {}),
-    Authorization: `Bearer ${token}`,
-  };
-
-  const hasBody = options?.body !== undefined && options?.body !== null;
-  const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === "content-type");
-  if (hasBody && !hasContentType) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  return withTimeout(
-    fetch(path, {
-      ...options,
-      headers,
-    }),
-    timeoutMs,
-    timeoutMessage,
-  );
-}
-
-async function connectInstagramOAuth() {
-  if (!currentUser) {
-    window.location.href = "/index.html";
-    return;
-  }
-
-  setConnectingIg(true);
-  setStatus("Starting Instagram connect...");
-  try {
-    const response = await fetchAuthenticatedApi(
-      "/api/instagram/connect",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      },
-      REQUEST_TIMEOUT_MS,
-      "Instagram connect timed out",
-    );
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload?.authUrl) {
-      throw new Error(String(payload?.error || `Connect failed (${response.status})`));
-    }
-    window.location.href = payload.authUrl;
-  } catch (error) {
-    console.error(error);
-    setStatus(`IG connect failed: ${error?.message || "unknown error"}`, true);
-    setConnectingIg(false);
-  }
 }
 
 async function withTimeout(promise, timeoutMs = REQUEST_TIMEOUT_MS, message = "Request timed out") {
@@ -1359,76 +1257,6 @@ async function refreshList() {
   }
 }
 
-async function syncInstagramReelsLast20() {
-  console.log("Sync IG clicked");
-  if (!currentUser) {
-    window.location.href = "/index.html";
-    return;
-  }
-
-  setSyncingIg(true);
-  setStatus("Syncing latest 20 IG reels...");
-  try {
-    console.log("Calling /api/instagram/sync-reels");
-    const response = await fetchAuthenticatedApi(
-      "/api/instagram/sync-reels",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-      IG_SYNC_TIMEOUT_MS,
-      "Instagram sync timed out",
-    );
-    const payload = await response.json().catch(() => ({}));
-    console.log("Sync response:", { status: response.status, ok: response.ok, payload });
-    if (!response.ok) {
-      if (/reconnect instagram/i.test(String(payload?.error || ""))) {
-        setStatus("Instagram token is invalid or expired. Opening connect flow...");
-        setSyncingIg(false);
-        await connectInstagramOAuth();
-        return;
-      }
-      if (response.status === 404 && /instagram not connected/i.test(String(payload?.error || ""))) {
-        setStatus("Instagram is not connected. Opening connect flow...");
-        setSyncingIg(false);
-        await connectInstagramOAuth();
-        return;
-      }
-      if (response.status === 401 && /reconnect instagram/i.test(String(payload?.error || ""))) {
-        setStatus("Instagram token expired. Opening connect flow...");
-        setSyncingIg(false);
-        await connectInstagramOAuth();
-        return;
-      }
-      throw new Error(String(payload?.error || `Sync failed (${response.status})`));
-    }
-
-    await refreshList();
-    const synced = Number(payload?.synced || 0);
-    if (synced === 0) {
-      setStatus(
-        "IG sync complete: 0 reels found. Make sure this is an Instagram Business/Creator account with reel posts.",
-      );
-    } else {
-      setStatus(
-        `IG sync complete: ${metricDisplay(payload.synced)} synced (${metricDisplay(payload.new)} new, ${metricDisplay(payload.updated)} updated).`,
-      );
-    }
-  } catch (error) {
-    console.error(error);
-    console.log("Sync response:", { error: error?.message || "unknown error" });
-    setStatus(`IG sync failed: ${error?.message || "unknown error"}`, true);
-  } finally {
-    setSyncingIg(false);
-  }
-}
-
-async function syncInstagramReels() {
-  return syncInstagramReelsLast20();
-}
-
 function parseMissingColumn(errorMessage) {
   const message = String(errorMessage || "");
   const match = message.match(/Could not find the '([^']+)' column/i);
@@ -1557,18 +1385,6 @@ refreshBtn.addEventListener("click", async () => {
   setStatus("Reels refreshed.");
 });
 
-if (syncIgReelsBtn instanceof HTMLButtonElement) {
-  syncIgReelsBtn.addEventListener("click", async () => {
-    await syncInstagramReels();
-  });
-}
-
-if (connectIgBtn instanceof HTMLButtonElement) {
-  connectIgBtn.addEventListener("click", async () => {
-    await connectInstagramOAuth();
-  });
-}
-
 listEl.addEventListener("click", async (event) => {
   const rawTarget = event.target;
   const target =
@@ -1635,7 +1451,6 @@ logoutBtn.addEventListener("click", async () => {
 async function init() {
   renderFormFields(null);
   setStatus("Ready.");
-  applyInstagramOauthMessageFromQuery();
 
   const { data, error } = await withTimeout(supabase.auth.getUser(), REQUEST_TIMEOUT_MS, "Session check timed out");
   if (error || !data?.user) {

@@ -51,6 +51,7 @@ type FieldConfig = {
 };
 
 const today = new Date().toISOString().slice(0, 10);
+const MAX_RETENTION_SECONDS = 90;
 
 const primaryFields: FieldConfig[] = [
   { key: "date", label: "Date", type: "date", required: true },
@@ -63,7 +64,7 @@ const primaryFields: FieldConfig[] = [
   { key: "shares", label: "Shares", type: "number" },
   { key: "follows", label: "Follows", type: "number" },
   { key: "watch_time", label: "Watch Time", type: "number" },
-  { key: "duration", label: "Duration", type: "number" },
+  { key: "duration", label: "Duration (mm:ss)", type: "text" },
   { key: "accounts_reached", label: "Accounts Reached", type: "number" }
 ];
 
@@ -108,13 +109,57 @@ const audienceFields: FieldConfig[] = [
   }
 ];
 
-const secFields: FieldConfig[] = Array.from({ length: 91 }, (_, second) => ({
+const allSecFields: FieldConfig[] = Array.from({ length: MAX_RETENTION_SECONDS + 1 }, (_, second) => ({
   key: `sec_${second}`,
   label: `sec_${second}`,
   type: "number"
 }));
 
-const fields = [...primaryFields, ...audienceFields, ...secFields];
+const fields = [...primaryFields, ...audienceFields, ...allSecFields];
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const parseDurationToSeconds = (
+  value: string | number | null | undefined
+): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return clamp(Math.floor(value), 0, MAX_RETENTION_SECONDS);
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const mmssMatch = trimmed.match(/^(\d{1,3}):(\d{1,2})$/);
+  if (mmssMatch) {
+    const minutes = Number(mmssMatch[1]);
+    const seconds = Number(mmssMatch[2]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || seconds > 59) {
+      return null;
+    }
+    return clamp(minutes * 60 + seconds, 0, MAX_RETENTION_SECONDS);
+  }
+
+  const numeric = Number(trimmed);
+  if (!Number.isFinite(numeric)) return null;
+  return clamp(Math.floor(numeric), 0, MAX_RETENTION_SECONDS);
+};
+
+const formatSecondsAsMMSS = (seconds: number) => {
+  const safe = clamp(Math.floor(seconds), 0, MAX_RETENTION_SECONDS);
+  const minutesPart = Math.floor(safe / 60);
+  const secondsPart = safe % 60;
+  return `${String(minutesPart).padStart(2, "0")}:${String(secondsPart).padStart(2, "0")}`;
+};
+
+const buildRetentionFieldConfigs = (fieldCount: number): FieldConfig[] =>
+  Array.from({ length: fieldCount }, (_, second) => ({
+    key: `sec_${second}`,
+    label: `Retention at ${second}s (%)`,
+    type: "number"
+  }));
 
 const createInitialForm = () => {
   const initial: FormState = {};
@@ -148,6 +193,14 @@ export default function Home() {
   const selectedInsightRow = useMemo(
     () => rows.find((row) => row.id === selectedInsightId) ?? null,
     [rows, selectedInsightId]
+  );
+  const retentionFieldCount = useMemo(() => {
+    const parsedDuration = parseDurationToSeconds(form.duration);
+    return parsedDuration === null ? 0 : parsedDuration;
+  }, [form.duration]);
+  const retentionFields = useMemo(
+    () => buildRetentionFieldConfigs(retentionFieldCount),
+    [retentionFieldCount]
   );
 
   const loadRows = async () => {
@@ -282,10 +335,23 @@ export default function Home() {
     setLoading(true);
     setMessage(isEditing ? "Updating..." : "Saving...");
 
+    const payload = (() => {
+      const next = { ...form };
+      const parsedDuration = parseDurationToSeconds(next.duration);
+      next.duration = parsedDuration === null ? "" : String(parsedDuration);
+
+      const keepSeconds = parsedDuration ?? 0;
+      for (let second = keepSeconds; second <= MAX_RETENTION_SECONDS; second += 1) {
+        next[`sec_${second}`] = "";
+      }
+
+      return next;
+    })();
+
     const res = await fetch("/api/metrics", {
       method: isEditing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isEditing ? { ...form, id: activeEditId } : form)
+      body: JSON.stringify(isEditing ? { ...payload, id: activeEditId } : payload)
     });
 
     const json = await res.json();
@@ -318,7 +384,12 @@ export default function Home() {
     const next = createInitialForm();
     for (const field of fields) {
       const value = metric[field.key];
-      next[field.key] = value === null || value === undefined ? "" : String(value);
+      if (field.key === "duration") {
+        const parsedDuration = parseDurationToSeconds(value as string | number | null | undefined);
+        next[field.key] = parsedDuration === null ? "" : formatSecondsAsMMSS(parsedDuration);
+      } else {
+        next[field.key] = value === null || value === undefined ? "" : String(value);
+      }
     }
     if (!next.date) {
       next.date = today;
@@ -600,6 +671,8 @@ export default function Home() {
               type={field.type}
               required={field.required}
               value={form[field.key]}
+              placeholder={field.key === "duration" ? "mm:ss (e.g. 00:30)" : undefined}
+              inputMode={field.key === "duration" ? "numeric" : undefined}
               onChange={(event) => handleFieldChange(field.key, event.target.value)}
             />
           )}
@@ -631,14 +704,14 @@ export default function Home() {
     const sec0 = secValue(source, 0);
     if (sec0 === null || sec0 <= 0) return null;
 
-    const duration = asNumber(source.duration);
+    const duration = parseDurationToSeconds(source.duration);
     if (duration !== null) {
-      const target = Math.max(0, Math.min(90, Math.round(duration)));
+      const target = clamp(Math.round(duration), 0, MAX_RETENTION_SECONDS);
       const direct = secValue(source, target);
       if (direct !== null) return direct / sec0;
     }
 
-    for (let i = 90; i >= 0; i -= 1) {
+    for (let i = MAX_RETENTION_SECONDS; i >= 0; i -= 1) {
       const value = secValue(source, i);
       if (value !== null) return value / sec0;
     }
@@ -673,6 +746,12 @@ export default function Home() {
           (asNumber(metricSource.saves) ?? 0) +
           (asNumber(metricSource.shares) ?? 0);
 
+        const durationSeconds = parseDurationToSeconds(metricSource.duration);
+        const averageRetention =
+          durationSeconds === null
+            ? null
+            : ratio(metricSource.average_watch_time, durationSeconds);
+
         return [
           { label: "Hook Retention", value: formatPercent(hookRetention) },
           {
@@ -681,7 +760,7 @@ export default function Home() {
           },
           {
             label: "Average Retention",
-            value: formatPercent(ratio(metricSource.average_watch_time, metricSource.duration))
+            value: formatPercent(averageRetention)
           },
           { label: "Completion Rate", value: formatPercent(completionRate(metricSource)) },
           {
@@ -847,8 +926,19 @@ export default function Home() {
           {renderFields(audienceFields)}
 
           <details className="expander">
-            <summary>Second-by-second Retention (sec_0 to sec_90)</summary>
-            {renderFields(secFields, "grid grid-tight")}
+            <summary>
+              {retentionFieldCount > 0
+                ? `Second-by-second Retention (sec_0 to sec_${retentionFieldCount - 1})`
+                : "Second-by-second Retention"}
+            </summary>
+            {retentionFieldCount > 0 ? (
+              renderFields(retentionFields, "grid grid-tight")
+            ) : (
+              <p className="subtitle">
+                Enter duration in <strong>mm:ss</strong> (example: <strong>00:30</strong>) to
+                render retention inputs.
+              </p>
+            )}
           </details>
 
           <div className="actions">
